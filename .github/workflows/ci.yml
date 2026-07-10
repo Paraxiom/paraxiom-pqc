@@ -1,0 +1,34 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# Least privilege: this workflow only needs to read the repo.
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-and-test:
+    name: build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - uses: Swatinem/rust-cache@v2
+      - name: Build (locked)
+        run: cargo build --locked --all-features --verbose
+      - name: Test (locked)
+        run: cargo test --locked --all-features --verbose
+      - name: Clippy (informational)
+        run: cargo clippy --all-targets --all-features
+        continue-on-error: true
+      - name: Format check (informational)
+        run: cargo fmt --all --check
+        continue-on-error: true

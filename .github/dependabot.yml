@@ -1,0 +1,19 @@
+version: 2
+updates:
+  - package-ecosystem: cargo
+    directory: "/"
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    # The PQC implementation crates are pinned to exact pre-release (rc.*)
+    # versions because their APIs break across rc bumps — bump these
+    # deliberately, not via automation.
+    ignore:
+      - dependency-name: "ml-kem"
+      - dependency-name: "ml-dsa"
+      - dependency-name: "slh-dsa"
+      - dependency-name: "falcon-rs"
+  - package-ecosystem: github-actions
+    directory: "/"
+    schedule:
+      interval: weekly
