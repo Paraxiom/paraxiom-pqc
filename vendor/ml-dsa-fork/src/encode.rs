@@ -1,7 +1,7 @@
 use core::ops::Add;
 use hybrid_array::{
-    Array,
     typenum::{Len, Length, Sum, Unsigned},
+    Array,
 };
 use module_lattice::{ArraySize, Encode, EncodingSize, VectorEncodingSize};
 
@@ -112,13 +112,13 @@ pub(crate) mod tests {
     use crate::algebra::*;
     use core::ops::Rem;
     use getrandom::{
-        SysRng,
         rand_core::{Rng, UnwrapErr},
+        SysRng,
     };
     use hybrid_array::typenum::{
-        U1, U2, U3, U4, U6, U7, U8, U9, U10, U13, U17, U19,
         marker_traits::Zero,
         operator_aliases::{Diff, Mod, Shleft},
+        U1, U10, U13, U17, U19, U2, U3, U4, U6, U7, U8, U9,
     };
     use module_lattice::{EncodedPolynomial, Field};
 

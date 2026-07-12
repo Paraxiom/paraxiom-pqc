@@ -1,0 +1,17 @@
+[package]
+name = "ml-dsa"
+version = "0.1.0-rc.7"
+edition = "2021"
+
+[lib]
+name = "ml_dsa"
+path = "src/lib.rs"
+
+[dependencies]
+# Only list what you are actually using in your fork
+module-lattice = { version = "0.1.0-rc.1" }
+hybrid-array = { version = "0.4", features = ["extra-sizes"] }
+sha3 = { version = "0.11", default-features = false }
+signature = { version = "3.0", default-features = false, features = ["digest"] }
+pkcs8 = { version = "0.11", default-features = false, features = ["alloc"] }
+zeroize = { version = "1.8", optional = true, default-features = false }

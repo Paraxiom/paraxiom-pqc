@@ -179,8 +179,8 @@ impl MultiplyNtt for BaseField {
 mod test {
     use super::*;
     use hybrid_array::{
-        Array,
         typenum::{U2, U3},
+        Array,
     };
 
     use crate::algebra::*;

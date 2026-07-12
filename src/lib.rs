@@ -8,6 +8,7 @@
 //! - **SLH-DSA** (FIPS 205) — Digital signatures (hash-based, stateless)
 //! - **Falcon** (pending FIPS 206) — Digital signatures (lattice-based, compact)
 
+mod dsa_ct;
 pub mod error;
 pub mod kem;
 pub mod sign;

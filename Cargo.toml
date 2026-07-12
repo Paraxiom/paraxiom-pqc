@@ -14,6 +14,7 @@ members = [
     ".",
     "vendor/ml-dsa-fork"
 ]
+exclude = ["vendor/slh-dsa-patch"]
 
 [dependencies]
 # Pinned to exact versions
@@ -29,7 +30,8 @@ zeroize = { version = "1", features = ["derive"] }
 thiserror = "2"
 
 [patch.crates-io]
-ml-dsa = { path = "vendor/ml-dsa-fork" }
+"ml-dsa" = { path = "vendor/ml-dsa-fork" }
+"slh-dsa" = { path = "vendor/slh-dsa-patch" }
 
 [dev-dependencies]
 criterion = "0.5"

@@ -7,26 +7,27 @@ use crate::{
     SigningKey, VerifyingKey,
 };
 use ::pkcs8::{
-    AlgorithmIdentifierRef, PrivateKeyInfoRef,
     der::{
-        self, AnyRef, Reader, TagNumber,
+        self,
         asn1::{ContextSpecific, OctetStringRef},
+        AnyRef, Reader, TagNumber,
     },
     spki::{
         self, AlgorithmIdentifier, AssociatedAlgorithmIdentifier, SignatureAlgorithmIdentifier,
         SubjectPublicKeyInfoRef,
     },
+    AlgorithmIdentifierRef, PrivateKeyInfoRef,
 };
 use const_oid::db::fips204;
 
 #[cfg(feature = "alloc")]
 use pkcs8::{
-    EncodePrivateKey, EncodePublicKey,
     der::{
-        Encode, TagMode,
         asn1::{BitString, BitStringRef},
+        Encode, TagMode,
     },
     spki::{SignatureBitStringEncoding, SubjectPublicKeyInfo},
+    EncodePrivateKey, EncodePublicKey,
 };
 
 /// Tag number for the seed value.
@@ -104,12 +105,12 @@ where
 
         let mut reader = der::SliceReader::new(private_key_info.private_key.as_bytes())?;
         let seed_string = SeedString::decode_implicit(&mut reader, SEED_TAG_NUMBER)?
-            .ok_or(pkcs8::Error::KeyMalformed)?;
+            .ok_or(pkcs8::Error::KeyMalformed(pkcs8::KeyError::Invalid))?;
         let seed = seed_string
             .value
             .as_bytes()
             .try_into()
-            .map_err(|_| pkcs8::Error::KeyMalformed)?;
+            .map_err(|_| pkcs8::Error::KeyMalformed(pkcs8::KeyError::Invalid))?;
         reader.finish()?;
 
         Ok(P::from_seed(&seed))
@@ -207,7 +208,7 @@ where
                     .as_bytes()
                     .ok_or_else(|| der::Tag::BitString.value_error().to_error())?,
             )
-            .map_err(|_| ::pkcs8::Error::KeyMalformed)?,
+            .map_err(|_| pkcs8::Error::KeyMalformed(pkcs8::KeyError::Invalid))?,
         ))
     }
 }

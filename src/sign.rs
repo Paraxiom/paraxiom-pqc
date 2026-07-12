@@ -163,8 +163,7 @@ fn ml_dsa_sign<P: ml_dsa::MlDsaParams>(sk: &SigningKey, msg: &[u8]) -> Result<Si
         .map_err(|_| PqcError::Sign("invalid seed size".into()))?;
     let b32 = ml_dsa::B32::from(seed);
     let signing_key = ml_dsa::SigningKey::<P>::from_seed(&b32);
-    let sig = signing_key
-        .sign_constant_time(msg, b"")
+    let sig = crate::dsa_ct::sign_constant_time(&signing_key, msg, b"")
         .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
     Ok(Signature {
         algorithm: sk.algorithm,

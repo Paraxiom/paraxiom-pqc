@@ -57,11 +57,11 @@ use crate::sampling::{expand_a, expand_mask, expand_s, sample_in_ball};
 use core::convert::{AsRef, TryFrom, TryInto};
 use core::fmt;
 use hybrid_array::{
-    Array,
     typenum::{
-        Diff, Length, Prod, Quot, Shleft, U1, U2, U4, U5, U6, U7, U8, U17, U19, U32, U48, U55, U64,
-        U75, U80, U88, Unsigned,
+        Diff, Length, Prod, Quot, Shleft, Unsigned, U1, U17, U19, U2, U32, U4, U48, U5, U55, U6,
+        U64, U7, U75, U8, U80, U88,
     },
+    Array,
 };
 use module_lattice::Truncate;
 use sha3::Shake256;
@@ -527,8 +527,7 @@ impl<P: MlDsaParams> SigningKey<P> {
         }
 
         let mu = MuBuilder::new(&self.tr, ctx).message(Mp);
-        self.raw_sign_mu_constant_time(&mu)
-            .ok_or(Error::new())
+        self.raw_sign_mu_constant_time(&mu).ok_or(Error::new())
     }
 
     fn raw_sign_mu_constant_time(&self, mu: &B64) -> Option<Signature<P>> {

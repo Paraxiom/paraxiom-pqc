@@ -61,7 +61,7 @@ fn coeffs_from_byte(z: u8, eta: Eta) -> (Option<Elem>, Option<Elem>) {
 }
 
 // Algorithm 29 SampleInBall
-pub fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
+pub(crate) fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
     const ONE: Elem = Elem::new(1);
     const MINUS_ONE: Elem = Elem::new(BaseField::Q - 1);
 
@@ -139,7 +139,7 @@ fn rej_bounded_poly(rho: &[u8], eta: Eta, r: u16) -> Polynomial {
 }
 
 // Algorithm 32 ExpandA
-pub fn expand_a<K: ArraySize, L: ArraySize>(rho: &[u8]) -> NttMatrix<K, L> {
+pub(crate) fn expand_a<K: ArraySize, L: ArraySize>(rho: &[u8]) -> NttMatrix<K, L> {
     NttMatrix::new(Array::from_fn(|r| {
         NttVector::new(Array::from_fn(|s| {
             rej_ntt_poly(rho, Truncate::truncate(r), Truncate::truncate(s))
@@ -154,7 +154,7 @@ pub fn expand_a<K: ArraySize, L: ArraySize>(rho: &[u8]) -> NttMatrix<K, L> {
 //
 //    let s1 = Vector::<K>::expand_s(rho, 0);
 //    let s2 = Vector::<L>::expand_s(rho, L::USIZE);
-pub fn expand_s<K: ArraySize>(rho: &[u8], eta: Eta, base: usize) -> Vector<K> {
+pub(crate) fn expand_s<K: ArraySize>(rho: &[u8], eta: Eta, base: usize) -> Vector<K> {
     Vector::new(Array::from_fn(|r| {
         let r = Truncate::truncate(r + base);
         rej_bounded_poly(rho, eta, r)
@@ -162,7 +162,7 @@ pub fn expand_s<K: ArraySize>(rho: &[u8], eta: Eta, base: usize) -> Vector<K> {
 }
 
 // Algorithm 34 ExpandMask
-pub fn expand_mask<K, Gamma1>(rho: &[u8], mu: u16) -> Vector<K>
+pub(crate) fn expand_mask<K, Gamma1>(rho: &[u8], mu: u16) -> Vector<K>
 where
     K: ArraySize,
     Gamma1: MaskSamplingSize,

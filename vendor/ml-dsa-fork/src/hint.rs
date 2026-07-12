@@ -3,8 +3,8 @@ use crate::{
     param::{EncodedHint, SignatureParams},
 };
 use hybrid_array::{
+    typenum::{Unsigned, U256},
     Array,
-    typenum::{U256, Unsigned},
 };
 use module_lattice::{Field, Truncate};
 
@@ -39,7 +39,7 @@ fn use_hint<TwoGamma2: Unsigned>(h: bool, r: Elem) -> Elem {
 }
 
 #[derive(Clone, PartialEq, Debug)]
-pub struct Hint<P>(pub Array<Array<bool, U256>, P::K>)
+pub(crate) struct Hint<P>(pub Array<Array<bool, U256>, P::K>)
 where
     P: SignatureParams;
 
@@ -56,7 +56,7 @@ impl<P> Hint<P>
 where
     P: SignatureParams,
 {
-    pub fn new(z: &Vector<P::K>, r: &Vector<P::K>) -> Self {
+    pub(crate) fn new(z: &Vector<P::K>, r: &Vector<P::K>) -> Self {
         let zi = z.0.iter();
         let ri = r.0.iter();
 
@@ -74,14 +74,14 @@ where
         )
     }
 
-    pub fn hamming_weight(&self) -> usize {
+    pub(crate) fn hamming_weight(&self) -> usize {
         self.0
             .iter()
             .map(|x| x.iter().filter(|x| **x).count())
             .sum()
     }
 
-    pub fn use_hint(&self, r: &Vector<P::K>) -> Vector<P::K> {
+    pub(crate) fn use_hint(&self, r: &Vector<P::K>) -> Vector<P::K> {
         let hi = self.0.iter();
         let ri = r.0.iter();
 

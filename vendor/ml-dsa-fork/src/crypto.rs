@@ -1,8 +1,8 @@
 use hybrid_array::Array;
 use module_lattice::ArraySize;
 use sha3::{
-    Shake128, Shake256,
     digest::{ExtendableOutput, XofReader},
+    Shake128, Shake256,
 };
 
 pub(crate) enum ShakeState<Shake: ExtendableOutput> {

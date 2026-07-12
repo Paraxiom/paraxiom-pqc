@@ -1,6 +1,6 @@
 use hybrid_array::{
+    typenum::{Shleft, Unsigned, U1, U13},
     ArraySize,
-    typenum::{Shleft, U1, U13, Unsigned},
 };
 use module_lattice::{Field, Truncate};
 
