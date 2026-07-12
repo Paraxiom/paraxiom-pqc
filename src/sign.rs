@@ -164,7 +164,7 @@ fn ml_dsa_sign<P: ml_dsa::MlDsaParams>(sk: &SigningKey, msg: &[u8]) -> Result<Si
     let b32 = ml_dsa::B32::from(seed);
     let signing_key = ml_dsa::SigningKey::<P>::from_seed(&b32);
     let sig = signing_key
-        .sign_deterministic(msg, b"")
+        .sign_constant_time(msg, b"")
         .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
     Ok(Signature {
         algorithm: sk.algorithm,
