@@ -35,13 +35,46 @@ pub struct SignKeypair {
 
 pub fn keypair(alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
     match alg {
-        SignAlgorithm::MlDsa44 => ml_dsa_keygen::<ml_dsa::MlDsa44>(alg),
-        SignAlgorithm::MlDsa65 => ml_dsa_keygen::<ml_dsa::MlDsa65>(alg),
-        SignAlgorithm::MlDsa87 => ml_dsa_keygen::<ml_dsa::MlDsa87>(alg),
+        SignAlgorithm::MlDsa44 => ml_dsa_keygen::<ml_dsa::MlDsa44>(alg, random_seed()?),
+        SignAlgorithm::MlDsa65 => ml_dsa_keygen::<ml_dsa::MlDsa65>(alg, random_seed()?),
+        SignAlgorithm::MlDsa87 => ml_dsa_keygen::<ml_dsa::MlDsa87>(alg, random_seed()?),
         SignAlgorithm::SlhDsaShake128f => slh_dsa_keygen::<slh_dsa::Shake128f>(alg, 16),
         SignAlgorithm::SlhDsaShake256s => slh_dsa_keygen::<slh_dsa::Shake256s>(alg, 32),
         SignAlgorithm::Falcon512 => falcon_keygen(9, alg),
         SignAlgorithm::Falcon1024 => falcon_keygen(10, alg),
+    }
+}
+
+/// Generate a signing keypair seeded from a quantum entropy source (feature
+/// `qrng`, default OFF).
+///
+/// The QRNG seeds a SHAKE256-conditioned CSPRNG ([`crate::qrng::QrngRng`]); see
+/// that module for the honesty/scope notes (entropy-source *assurance*, not a
+/// stronger-crypto claim). Currently wired for ML-DSA (the seed-based FIPS 204
+/// path); SLH-DSA and Falcon return an explicit error until their keygen RNG is
+/// parameterised.
+#[cfg(feature = "qrng")]
+pub fn keypair_qrng<S: crate::qrng::QuantumSource>(
+    alg: SignAlgorithm,
+    qrng: &mut crate::qrng::QrngRng<S>,
+) -> Result<SignKeypair, PqcError> {
+    let mut seed = [0u8; 32];
+    match alg {
+        SignAlgorithm::MlDsa44 => {
+            qrng.fill(&mut seed);
+            ml_dsa_keygen::<ml_dsa::MlDsa44>(alg, seed)
+        }
+        SignAlgorithm::MlDsa65 => {
+            qrng.fill(&mut seed);
+            ml_dsa_keygen::<ml_dsa::MlDsa65>(alg, seed)
+        }
+        SignAlgorithm::MlDsa87 => {
+            qrng.fill(&mut seed);
+            ml_dsa_keygen::<ml_dsa::MlDsa87>(alg, seed)
+        }
+        _ => Err(PqcError::KeyGen(
+            "QRNG-seeded keygen is currently wired for ML-DSA only".into(),
+        )),
     }
 }
 
@@ -135,8 +168,8 @@ fn random_seed() -> Result<[u8; 32], PqcError> {
 
 fn ml_dsa_keygen<P: ml_dsa::MlDsaParams + ml_dsa::KeyGen>(
     alg: SignAlgorithm,
+    seed: [u8; 32],
 ) -> Result<SignKeypair, PqcError> {
-    let seed = random_seed()?;
     let b32 = ml_dsa::B32::from(seed);
     // Original `P::from_seed(&b32)` is kept commented for context: it
     // pulls VK encoding via the trait method, but we need the raw
