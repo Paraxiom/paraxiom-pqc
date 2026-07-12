@@ -11,6 +11,8 @@
 mod dsa_ct;
 pub mod error;
 pub mod kem;
+#[cfg(feature = "qrng")]
+pub mod qrng;
 pub mod sign;
 
 pub use error::PqcError;

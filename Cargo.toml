@@ -29,9 +29,20 @@ rand_core = "0.10"
 zeroize = { version = "1", features = ["derive"] }
 thiserror = "2"
 
+<<<<<<< HEAD
 [patch.crates-io]
 "ml-dsa" = { path = "vendor/ml-dsa-fork" }
 "slh-dsa" = { path = "vendor/slh-dsa-patch" }
+=======
+# Optional: `qrng` feature — SHAKE256 entropy conditioning for QRNG-seeded keygen.
+sha3 = { version = "=0.11.0-rc.9", optional = true }
+
+[features]
+default = []
+# Seed post-quantum key generation from a pluggable quantum entropy source
+# (QKD/QRNG hardware). Default OFF — the default build uses the OS RNG.
+qrng = ["dep:sha3"]
+>>>>>>> origin/main
 
 [dev-dependencies]
 criterion = "0.5"
