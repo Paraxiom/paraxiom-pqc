@@ -260,6 +260,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "4850db49bf08e663084f7fb5c87d202ef91a3907271aff24a94eb97ff039153c"
 dependencies = [
  "block-buffer",
+ "const-oid",
  "crypto-common",
  "ctutils",
 ]
@@ -562,6 +563,7 @@ dependencies = [
  "ml-dsa",
  "ml-kem",
  "rand_core",
+ "sha3",
  "slh-dsa",
  "thiserror",
  "zeroize",
