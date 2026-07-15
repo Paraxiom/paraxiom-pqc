@@ -17,11 +17,15 @@ members = [
 exclude = ["vendor/slh-dsa-patch"]
 
 [dependencies]
-# Pinned to exact versions
+# Pinned to exact versions.
+# ml-kem powers the KEM; ml-dsa/slh-dsa/falcon-rs power the `sign` feature.
+# The signature crates are optional so KEM-only consumers can build without
+# them (the ml-dsa rc currently needs the vendored [patch] fork to compile
+# against modern pkcs8/spki; KEM-only builds sidestep that entirely).
 ml-kem = { version = "=0.3.0-rc.0", features = ["getrandom"] }
-ml-dsa = { version = "=0.1.0-rc.7", features = ["rand_core"] }
-slh-dsa = "=0.2.0-rc.4"
-falcon-rs = "=0.2.3"
+ml-dsa = { version = "=0.1.0-rc.7", features = ["rand_core"], optional = true }
+slh-dsa = { version = "=0.2.0-rc.4", optional = true }
+falcon-rs = { version = "=0.2.3", optional = true }
 
 # Common dependencies
 getrandom = "0.3"
@@ -33,7 +37,11 @@ thiserror = "2"
 sha3 = { version = "0.11", optional = true }
 
 [features]
-default = []
+# `sign` is on by default so existing consumers are unaffected. KEM-only
+# consumers use `default-features = false` to drop ml-dsa/slh-dsa/falcon-rs.
+default = ["sign"]
+# Digital signatures: ML-DSA (FIPS 204), SLH-DSA (FIPS 205), Falcon.
+sign = ["dep:ml-dsa", "dep:slh-dsa", "dep:falcon-rs"]
 # Seed post-quantum key generation from a pluggable quantum entropy source
 # (QKD/QRNG hardware). Default OFF — the default build uses the OS RNG.
 qrng = ["dep:sha3"]
