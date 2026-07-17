@@ -86,7 +86,16 @@ pub(crate) fn sign_constant_time<P>(
 where
     P: MlDsaParams,
 {
-    signing_key.sign_deterministic_constant_time(msg, ctx)
+    if ctx.len() > 255 {
+        return Err(ml_dsa::Error::new());
+    }
+
+    loop {
+        match signing_key.sign_deterministic_constant_time(msg, ctx) {
+            Ok(signature) => return Ok(signature),
+            Err(_) => continue,
+        }
+    }
 }
 
 #[cfg(test)]

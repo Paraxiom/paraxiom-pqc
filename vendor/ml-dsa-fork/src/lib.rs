@@ -505,11 +505,12 @@ impl<P: MlDsaParams> SigningKey<P> {
     /// and acceptance criteria are evaluated using bitwise masking rather than data-dependent
     /// conditionals.
     ///
-    /// # Panics
+    /// # Returns
     ///
-    /// This method panics with `"ML-DSA: Rejection sampling failed after MAX_ROUNDS"`
-    /// if `MAX_ROUNDS` iterations are exhausted without finding a valid
-    /// signature. In practice, this is astronomically unlikely (probability < 2^-128).
+    /// This method returns `None` if `MAX_ROUNDS` iterations are exhausted
+    /// without finding a valid signature. In practice, this is astronomically
+    /// unlikely (probability < 2^-128), and the caller should retry the signing
+    /// operation as required by the FIPS 204 specification.
     pub fn sign_deterministic_constant_time(
         &self,
         M: &[u8],
@@ -585,7 +586,7 @@ impl<P: MlDsaParams> SigningKey<P> {
             }
         }
 
-        panic!("ML-DSA: Rejection sampling failed after MAX_ROUNDS");
+        None
     }
 
     /// This auxiliary function derives a `VerifyingKey` from a bare
