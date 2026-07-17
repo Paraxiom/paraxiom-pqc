@@ -65,7 +65,11 @@ use ml_dsa::{MlDsaParams, Signature, SigningKey};
 /// `high_bits`/`low_bits`, `Hint`) and emits the standard `(c_tilde, z, h)`
 /// encoding, so signatures verify with any compliant FIPS 204 verifier.
 ///
-/// # Warning: stack requirements
+/// # Stack Requirement
+///
+/// **Stack Requirement:** This signing routine requires 64 MB of stack space to
+/// execute safely. Ensure calling threads are configured with adequate stack
+/// size to avoid stack overflow errors.
 ///
 /// Testing showed the kernel overflows the default (~8 MiB) thread stack during
 /// key expansion and the 256-round candidate generation. Run tests and

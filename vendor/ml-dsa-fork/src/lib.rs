@@ -507,7 +507,8 @@ impl<P: MlDsaParams> SigningKey<P> {
     ///
     /// # Panics
     ///
-    /// This method panics if `MAX_ROUNDS` iterations are exhausted without finding a valid
+    /// This method panics with `"ML-DSA: Rejection sampling failed after MAX_ROUNDS"`
+    /// if `MAX_ROUNDS` iterations are exhausted without finding a valid
     /// signature. In practice, this is astronomically unlikely (probability < 2^-128).
     pub fn sign_deterministic_constant_time(
         &self,
@@ -584,7 +585,7 @@ impl<P: MlDsaParams> SigningKey<P> {
             }
         }
 
-        selected_signature
+        panic!("ML-DSA: Rejection sampling failed after MAX_ROUNDS");
     }
 
     /// This auxiliary function derives a `VerifyingKey` from a bare
