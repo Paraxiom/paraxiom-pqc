@@ -2,7 +2,7 @@
 name = "paraxiom-pqc"
 version = "0.1.3"
 edition = "2021"
-license = "MIT OR Apache-2.0"
+license = "GPL-3.0-only"
 description = "Paraxiom post-quantum cryptography — pure Rust, zero C. Unified API for ML-KEM, ML-DSA, SLH-DSA, and Falcon."
 repository = "https://github.com/Paraxiom/paraxiom-pqc"
 keywords = ["post-quantum", "cryptography", "ml-kem", "ml-dsa", "falcon"]

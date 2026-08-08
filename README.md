@@ -50,7 +50,13 @@ Published: [DOI 10.5281/zenodo.18663125](https://doi.org/10.5281/zenodo.18663125
 
 ## License
 
-MIT OR Apache-2.0
+**GPL-3.0-only**, or a **Paraxiom commercial licence**, at your option — see `LICENSE.md`.
+
+Free under GPL-3.0 for research, evaluation and open-source products. Embedding in a
+**proprietary** product requires a commercial licence: sylvain@paraxiom.org
+
+Releases published before 8 August 2026 were under `MIT OR Apache-2.0`; that change is
+not retroactive.
 
 ## Contact
 
