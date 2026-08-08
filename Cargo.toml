@@ -47,7 +47,7 @@ sign = ["dep:ml-dsa", "dep:slh-dsa", "dep:falcon-rs"]
 qrng = ["dep:sha3"]
 
 [dev-dependencies]
-criterion = "0.5"
+criterion = "0.7"
 
 [[bench]]
 name = "benchmarks"
