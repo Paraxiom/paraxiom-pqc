@@ -20,11 +20,11 @@ exclude = ["vendor/slh-dsa-patch"]
 # Pinned to exact versions.
 # ml-kem powers the KEM; ml-dsa/slh-dsa/falcon-rs power the `sign` feature.
 # The signature crates are optional so KEM-only consumers can build without
-# them (the ml-dsa rc currently needs the vendored [patch] fork to compile
+# them (the ml-dsa rc needs the vendored fork to compile
 # against modern pkcs8/spki; KEM-only builds sidestep that entirely).
 ml-kem = { version = "=0.3.0-rc.0", features = ["getrandom"] }
-ml-dsa = { version = "=0.1.0-rc.7", features = ["rand_core"], optional = true }
-slh-dsa = { version = "=0.2.0-rc.4", optional = true }
+ml-dsa = { path = "vendor/ml-dsa-fork", features = ["rand_core"], optional = true }
+slh-dsa = { path = "vendor/slh-dsa-patch", optional = true }
 falcon-rs = { version = "=0.2.3", optional = true }
 
 # Common dependencies
@@ -45,10 +45,6 @@ sign = ["dep:ml-dsa", "dep:slh-dsa", "dep:falcon-rs"]
 # Seed post-quantum key generation from a pluggable quantum entropy source
 # (QKD/QRNG hardware). Default OFF — the default build uses the OS RNG.
 qrng = ["dep:sha3"]
-
-[patch.crates-io]
-ml-dsa = { path = "vendor/ml-dsa-fork" }
-slh-dsa = { path = "vendor/slh-dsa-patch" }
 
 [dev-dependencies]
 criterion = "0.5"
