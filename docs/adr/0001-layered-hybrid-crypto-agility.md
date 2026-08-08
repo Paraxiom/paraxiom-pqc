@@ -130,3 +130,24 @@ live pressure on it; the mitigation is the ML-KEM ⊕ HQC agility roadmap above.
 limitation with a documented mitigation path, not a defect** — and it strengthens the honesty posture
 the evaluation rewards. Relevant to BeatQuantum (PQTG) and to the crypto-core audit shortlist
 (Trail of Bits / NCC Group / Quarkslab).
+
+### Step 0 result — 2026-08-08 spike: the HQC mitigation is directionally right but ecosystem-gated
+
+A web spike answered the gating question above. **There is no usable pure-Rust HQC today:**
+- **RustCrypto** (source of our pure-Rust `ml-kem`) has **no HQC** crate.
+- The only HQC crate, **`pqcrypto-hqc`**, is **C bindings to PQClean** (breaks zero-C) **and** carries
+  **RUSTSEC-2026-0168** ("unlikely to receive further updates or fixes"). A non-starter for a zero-C, audited core.
+- HQC's **side-channel surface is actively hot** (2025: timing leak in the deterministic-re-encryption
+  rejection sampling *even with constant-time decoders*; single-trace power recovery of HQC-128 from
+  ~3,500 traces, ePrint 2025/2162). A safe pure-Rust implementation is research-grade, not a port.
+- HQC is **not yet final FIPS** (NIST-selected Mar 2025; finalization ~2026–2027) — a moving spec.
+
+**Consequence (this is the honest audit answer to "is the mitigation real?"):** do **not** "add HQC now."
+The mitigation that ships now is the **agility itself** — the combiner + config-selectable KEM — so HQC
+drops in the moment a sound pure-Rust impl lands (as `ml-kem` did). Concretely:
+1. **Build the KEM combiner + config-selectable KEM.** Agility is the deliverable; HQC is a future plug-in. Value stands even before HQC exists.
+2. **Track `RustCrypto/KEMs`** for a pure-Rust HQC; adopt when it ships. Do **not** vendor the C-backed, RUSTSEC-flagged `pqcrypto-hqc`.
+3. **Signatures already carry family diversity** (hash-based SLH-DSA ⊕ lattice) — the signature side is hedged *today*; only the KEM side waits.
+4. Classic McEliece is not a near-term option either (also C-only in Rust; ~1 MB keys unfit for a per-connection handshake).
+
+**Net:** the risk is real, the direction is right, and the mitigation is **gated on ecosystem maturity** — so we build the agility now and plug HQC when it is sound in pure Rust.
