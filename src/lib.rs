@@ -9,7 +9,7 @@
 //! - **Falcon** (pending FIPS 206) — Digital signatures (lattice-based, compact)
 
 #[cfg(feature = "sign")]
-mod dsa_ct;
+pub mod dsa_ct;
 pub mod error;
 pub mod kem;
 #[cfg(feature = "qrng")]

@@ -78,7 +78,7 @@ use ml_dsa::{MlDsaParams, Signature, SigningKey};
 /// not a constant-time concern.
 ///
 /// `ctx` is the FIPS 204 context string (maximum 255 bytes).
-pub(crate) fn sign_constant_time<P>(
+pub fn sign_constant_time<P>(
     signing_key: &SigningKey<P>,
     msg: &[u8],
     ctx: &[u8],
@@ -90,12 +90,23 @@ where
         return Err(ml_dsa::Error::new());
     }
 
-    loop {
+    const MAX_ATTEMPTS: u32 = 4;
+    let mut last_err = ml_dsa::Error::new();
+    for attempt in 0..MAX_ATTEMPTS {
         match signing_key.sign_deterministic_constant_time(msg, ctx) {
             Ok(signature) => return Ok(signature),
-            Err(_) => continue,
+            Err(e) => {
+                last_err = e;
+                if attempt == 0 {
+                    eprintln!(
+                        "warn: constant-time sign attempt failed (retrying up to {} times)",
+                        MAX_ATTEMPTS
+                    );
+                }
+            }
         }
     }
+    Err(last_err)
 }
 
 #[cfg(test)]
