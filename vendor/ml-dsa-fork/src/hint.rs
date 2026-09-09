@@ -8,12 +8,32 @@ use hybrid_array::{
 };
 use module_lattice::{Field, Truncate};
 
+/// Constant-time comparison: returns 1 if a == b, 0 otherwise
+#[inline(always)]
+fn ct_eq_u32(a: u32, b: u32) -> u32 {
+    let diff = a ^ b;
+    ((diff | diff.wrapping_neg()) >> 31) as u32 ^ 1
+}
+
+/// Constant-time comparison: returns 1 if a > b, 0 otherwise
+#[inline(always)]
+fn ct_gt_u32(a: u32, b: u32) -> u32 {
+    ((b as i32 - a as i32) >> 31) as u32
+}
+
+/// Constant-time comparison: returns 1 if a >= b, 0 otherwise
+#[inline(always)]
+fn ct_gte_u32(a: u32, b: u32) -> u32 {
+    ((b.wrapping_sub(a)) as i32 >> 31) as u32
+}
+
 /// Algorithm 39 `MakeHint`: computes hint bit indicating whether adding `z` to `r` alters the high
 /// bits of `r`.
 fn make_hint<TwoGamma2: Unsigned>(z: Elem, r: Elem) -> bool {
     let r1 = r.high_bits::<TwoGamma2>();
     let v1 = (r + z).high_bits::<TwoGamma2>();
-    r1 != v1
+    // Constant-time comparison: result is 1 if r1 != v1, 0 otherwise
+    ct_eq_u32(r1.0, v1.0) == 0
 }
 
 /// Algorithm 40 `UseHint`: returns the high bits of `r` adjusted according to hint `h`.
@@ -23,19 +43,35 @@ fn use_hint<TwoGamma2: Unsigned>(h: bool, r: Elem) -> Elem {
     let (r1, r0) = r.decompose::<TwoGamma2>();
     let gamma2 = TwoGamma2::U32 / 2;
 
-    if h {
-        if r0.0 > 0 && r0.0 <= gamma2 {
-            Elem::new((r1.0 + 1) % m)
-        } else if (r0.0 == 0) || (r0.0 >= BaseField::Q - gamma2) {
-            Elem::new((r1.0 + m - 1) % m)
-        } else {
-            // We use the Elem encoding even for signed integers.  Since r0 is computed
-            // mod+- 2*gamma2 (possibly minus 1), it is guaranteed to be in [-gamma2, gamma2].
-            unreachable!();
-        }
-    } else {
-        r1
-    }
+    // Convert h to masks for constant-time selection
+    let h_is_true = h as u32;
+    let h_is_false = (!h) as u32;
+    let h_true_mask = 0u32.wrapping_sub(h_is_true);  // 0xFFFFFFFF if h=true, 0 if false
+    let h_false_mask = 0u32.wrapping_sub(h_is_false); // 0xFFFFFFFF if h=false, 0 if true
+
+    // Compute conditions for h=true branch
+    let r0_val = r0.0;
+    let cond1 = (r0_val > 0) & (r0_val <= gamma2);
+    let cond2 = (r0_val == 0) | (r0_val >= BaseField::Q - gamma2);
+    let cond1_mask = 0u32.wrapping_sub(cond1 as u32);  // 0xFFFFFFFF if true, 0 if false
+    let cond2_mask = 0u32.wrapping_sub(cond2 as u32);  // 0xFFFFFFFF if true, 0 if false
+
+    // Case results
+    let case1 = Elem::new((r1.0 + 1) % m);  // h=true and cond1
+    let case2 = Elem::new((r1.0 + m - 1) % m); // h=true and cond2 (or unreachable)
+    let case3 = r1;                           // h=false
+
+    // For h=true branch: select case1 if cond1, otherwise case2
+    let h_true_result = Elem::new(
+        (case1.0 & cond1_mask) | (case2.0 & !cond1_mask)
+    );
+
+    // Final result: h_true_result if h=true, otherwise r1 (case3)
+    let result = Elem::new(
+        (h_true_result.0 & h_true_mask) | (case3.0 & h_false_mask)
+    );
+
+    result
 }
 
 #[derive(Clone, PartialEq, Debug)]
@@ -75,9 +111,18 @@ where
     }
 
     pub(crate) fn hamming_weight(&self) -> usize {
+        // Constant-time hamming weight computation
+        // Sum the boolean values without data-dependent branches
         self.0
             .iter()
-            .map(|x| x.iter().filter(|x| **x).count())
+            .map(|x| {
+                let mut sum = 0usize;
+                for &b in x.iter() {
+                    // Add 1 if b is true, 0 otherwise (constant-time)
+                    sum += b as usize;
+                }
+                sum
+            })
             .sum()
     }
 
@@ -101,24 +146,28 @@ where
         )
     }
 
-    pub(crate) fn bit_pack(&self) -> EncodedHint<P> {
-        let mut y: EncodedHint<P> = Array::default();
-        let mut index = 0;
-        let omega = P::Omega::USIZE;
-        for i in 0..P::K::U8 {
-            let i_usize: usize = i.into();
-            for j in 0..256 {
-                if self.0[i_usize][j] {
-                    y[index] = Truncate::truncate(j);
-                    index += 1;
-                }
-            }
-
-            y[omega + i_usize] = Truncate::truncate(index);
+pub(crate) fn bit_pack(&self) -> EncodedHint<P> {
+    let mut y: EncodedHint<P> = Array::default();
+    let mut index = 0;
+    let omega = P::Omega::USIZE;
+    for i in 0..P::K::U8 {
+        let i_usize: usize = i.into();
+        for j in 0..256 {
+            // Constant-time conditional store
+            let bit = self.0[i_usize][j] as u8;
+            let mask = (0u32.wrapping_sub(bit as u32)) as u8;
+            let j_trunc: u8 = Truncate::truncate(j);
+            y[index] = (y[index] & !mask) | (j_trunc & mask);
+            // Increment index only if bit is set (constant-time)
+            let inc = bit as usize;
+            index += inc;
         }
 
-        y
+        y[omega + i_usize] = Truncate::truncate(index);
     }
+
+    y
+}
 
     pub(crate) fn bit_unpack(y: &EncodedHint<P>) -> Option<Self> {
         let (indices, cuts) = P::split_hint(y);

@@ -28,11 +28,11 @@ pub(crate) trait BarrettReduce: Unsigned {
         let quotient = (x * Self::MULTIPLIER) >> Self::SHIFT;
         let remainder = x - quotient * m;
 
-        if remainder < m {
-            Truncate::truncate(remainder)
-        } else {
-            Truncate::truncate(remainder - m)
-        }
+        // Use wrapping arithmetic to avoid debug-mode panics
+        // mask = 0xFFFFFFFF if remainder < m, else 0
+        let mask = ((remainder.wrapping_sub(m) as i64) >> 63) as u64;
+        let result = (remainder & mask) | (remainder.wrapping_sub(m) & !mask);
+        result as u32
     }
 }
 
@@ -103,14 +103,23 @@ impl Decompose for Elem {
         let r_plus = self.clone();
         let r0 = r_plus.mod_plus_minus::<TwoGamma2>();
 
-        if r_plus - r0 == Elem::new(BaseField::Q - 1) {
-            (Elem::new(0), r0 - Elem::new(1))
-        } else {
-            let diff = r_plus - r0;
-            // Use constant-time division instead of hardware division
-            let r1 = Elem::new(TwoGamma2::ct_div(diff.0));
-            (r1, r0)
-        }
+        let diff = r_plus - r0;
+        let is_q_minus_1 = diff.0 == BaseField::Q - 1;
+        // mask = 0xFFFFFFFF if special case (diff == Q-1), 0 otherwise
+        let mask = (is_q_minus_1 as u32).wrapping_neg();
+
+        // If diff == Q-1: r1 = 0, r0 = r0 - 1
+        // Else: r1 = diff / (2*gamma2), r0 = r0
+        let r1_special = Elem::new(0);
+        let r1_normal = Elem::new(TwoGamma2::ct_div(diff.0));
+        // mask selects special case when 1, normal case when 0
+        let r1 = Elem::new((r1_special.0 & mask) | (r1_normal.0 & !mask));
+
+        let r0_special = r0 - Elem::new(1);
+        let r0_normal = r0;
+        let r0_final = Elem::new((r0_special.0 & mask) | (r0_normal.0 & !mask));
+
+        (r1, r0_final)
     }
 }
 
@@ -126,35 +135,23 @@ pub(crate) trait AlgebraExt: Sized {
 impl AlgebraExt for Elem {
     fn mod_plus_minus<M: Unsigned>(&self) -> Self {
         let raw_mod = Elem::new(M::reduce(self.0));
-        if raw_mod.0 <= M::U32 >> 1 {
-            raw_mod
-        } else {
-            raw_mod - Elem::new(M::U32)
-        }
+        let half_m = M::U32 >> 1;
+        // Constant-time mask: 0xFFFFFFFF if raw_mod <= half_m, else 0
+        // Using (a <= b) -> ((a - b - 1) as i32 >> 31) as u32
+        let mask = ((raw_mod.0 as u32).wrapping_sub(half_m + 1) as i32 >> 31) as u32;
+        // For negative case: (raw_mod - M) mod Q = raw_mod + Q - M
+        let sub_result = raw_mod.0.wrapping_add(BaseField::Q).wrapping_sub(M::U32);
+        let result = (raw_mod.0 & mask) | (sub_result & !mask);
+        Elem::new(result)
     }
 
-    // FIPS 204 defines the infinity norm differently for signed vs. unsigned integers:
-    //
-    // * For w in Z, |w|_\infinity = |w|, the absolute value of w
-    // * For w in Z_q, |W|_infinity = |w mod^\pm q|
-    //
-    // Note that these two definitions are equivalent if |w| < q/2.  This property holds for all of
-    // the signed integers used in this crate, so we can safely use the unsigned version.  However,
-    // since mod_plus_minus is also unsigned, we need to unwrap the "negative" values.
     fn infinity_norm(&self) -> u32 {
-        if self.0 <= BaseField::Q >> 1 {
-            self.0
-        } else {
-            BaseField::Q - self.0
-        }
+        let half_q = BaseField::Q >> 1;
+        // Constant-time mask: 0xFFFFFFFF if self.0 <= half_q, else 0
+        let mask = ((self.0 as u32).wrapping_sub(half_q + 1) as i32 >> 31) as u32;
+        (self.0 & mask) | ((BaseField::Q - self.0) & !mask)
     }
 
-    // Algorithm 35 Power2Round
-    //
-    // In the specification, this function maps to signed integers rather than modular integers.
-    // To avoid the need for a whole separate type for signed integer polynomials, we represent
-    // these values using integers mod Q.  This is safe because Q is much larger than 2^13, so
-    // there's no risk of overlap between positive numbers (x) and negative numbers (Q-x).
     fn power2round(&self) -> (Self, Self) {
         type D = U13;
         type Pow2D = Shleft<U1, D>;
@@ -166,12 +163,10 @@ impl AlgebraExt for Elem {
         (r1, r0)
     }
 
-    // Algorithm 37 HighBits
     fn high_bits<TwoGamma2: Unsigned>(&self) -> Self {
         self.decompose::<TwoGamma2>().0
     }
 
-    // Algorithm 38 LowBits
     fn low_bits<TwoGamma2: Unsigned>(&self) -> Self {
         self.decompose::<TwoGamma2>().1
     }

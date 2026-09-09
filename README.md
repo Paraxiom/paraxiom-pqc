@@ -9,7 +9,11 @@ Unified API for all four NIST PQC standards:
 | **FIPS 203** | ML-KEM | 512, 768, 1024 |
 | **FIPS 204** | ML-DSA | 44, 65, 87 |
 | **FIPS 205** | SLH-DSA | SHAKE-128f, SHAKE-256s |
-| **FIPS 206** | Falcon | 512, 1024 |
+| **FIPS 206** (draft) | Falcon (FN-DSA) | 512, 1024 |
+
+> FN-DSA (FIPS 206) is not yet a finalized NIST standard. Deployments that need a
+> finalized signature standard today should use ML-DSA (FIPS 204) or SLH-DSA (FIPS 205),
+> or pair Falcon with one of them.
 
 ## Usage
 
@@ -50,7 +54,13 @@ Published: [DOI 10.5281/zenodo.18663125](https://doi.org/10.5281/zenodo.18663125
 
 ## License
 
-MIT OR Apache-2.0
+**GPL-3.0-only**, or a **Paraxiom commercial licence**, at your option — see `LICENSE.md`.
+
+Free under GPL-3.0 for research, evaluation and open-source products. Embedding in a
+**proprietary** product requires a commercial licence: sylvain@paraxiom.org
+
+Releases published before 8 August 2026 were under `MIT OR Apache-2.0`; that change is
+not retroactive.
 
 ## Contact
 

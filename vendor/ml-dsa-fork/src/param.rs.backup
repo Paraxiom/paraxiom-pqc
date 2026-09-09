@@ -34,21 +34,34 @@ pub(crate) type BitlenQMinusD = Diff<Length<SpecQ>, SpecD>;
 pub(crate) type Pow2DMinus1 = Shleft<U1, Diff<SpecD, U1>>;
 pub(crate) type Pow2DMinus1Minus1 = Diff<Pow2DMinus1, U1>;
 
-/// An integer that describes a bit length to be used in sampling
-#[expect(unreachable_pub)]
-pub trait SamplingSize: ArraySize + Len {
-    const ETA: Eta;
+#[cfg(feature = "bench")]
+pub mod param {
+    pub use super::param_internal::*;
 }
 
-#[derive(Copy, Clone)]
-
-/// An integer that describes a bit length to be used in sampling
-pub enum Eta {
-    /// Eta = 2
-    Two,
-    /// Eta = 4
-    Four,
+#[cfg(not(feature = "bench"))]
+pub mod param {
+    pub use super::param_internal::*;
 }
+
+mod param_internal {
+    /// An integer that describes a bit length to be used in sampling
+    #[expect(unreachable_pub)]
+    pub trait SamplingSize: ArraySize + Len {
+        const ETA: Eta;
+    }
+
+    #[derive(Copy, Clone)]
+    pub enum Eta {
+        Two,
+        Four,
+    }
+
+    impl SamplingSize for U2 {
+        const ETA: Eta = Eta::Two;
+    }
+}
+
 impl SamplingSize for U2 {
     const ETA: Eta = Eta::Two;
 }

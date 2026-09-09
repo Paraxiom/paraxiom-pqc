@@ -86,6 +86,52 @@ pub(crate) type B64 = Array<u8, U64>;
 /// levels, and are the preferred serialization for representing such keys.
 pub type Seed = B32;
 
+/// Algebra types used by benchmark wrappers (public when `bench` feature is enabled)
+#[cfg(feature = "bench")]
+pub mod algebra_types {
+    use crate::algebra::{NttPolynomial, Polynomial, Vector};
+}
+
+/// Parameter types used by benchmark wrappers (public when `bench` feature is enabled)
+#[cfg(feature = "bench")]
+pub mod param_types {
+    pub use crate::param::Eta;
+}
+
+/// Benchmark wrappers for internal functions (only available with `bench` feature)
+#[cfg(feature = "bench")]
+pub mod bench {
+    use crate::algebra::{NttPolynomial, Polynomial, Vector};
+    use crate::param::{Eta, MaskSamplingSize};
+    use crate::sampling::{rej_bounded_poly, rej_ntt_poly, sample_in_ball};
+    use hybrid_array::Array;
+    use module_lattice::ArraySize;
+
+    /// Wrapper for `sample_in_ball`
+    pub fn sample_in_ball_bench(rho: &[u8], tau: usize) -> Polynomial {
+        sample_in_ball(rho, tau)
+    }
+
+    /// Wrapper for `rej_bounded_poly`
+    pub fn rej_bounded_poly_bench(rho: &[u8], eta: Eta, r: u16) -> Polynomial {
+        rej_bounded_poly(rho, eta, r)
+    }
+
+    /// Wrapper for `rej_ntt_poly`
+    pub fn rej_ntt_poly_bench(rho: &[u8], r: u8, s: u8) -> NttPolynomial {
+        rej_ntt_poly(rho, r, s)
+    }
+
+    /// Wrapper for `expand_mask`
+    pub fn expand_mask_bench<K, Gamma1>(rho: &[u8], mu: u16) -> Vector<K>
+    where
+        K: ArraySize,
+        Gamma1: MaskSamplingSize,
+    {
+        crate::sampling::expand_mask::<K, Gamma1>(rho, mu)
+    }
+}
+
 /// An ML-DSA signature
 #[derive(Clone, PartialEq, Debug)]
 pub struct Signature<P: MlDsaParams> {
@@ -541,7 +587,10 @@ impl<P: MlDsaParams> SigningKey<P> {
             .absorb(mu)
             .squeeze_new();
 
-        let mut selected_signature: Option<Signature<P>> = None;
+        // Store signature components directly to avoid Option branches
+        let mut selected_c_tilde: Array<u8, P::Lambda> = Array::default();
+        let mut selected_z: Vector<P::L> = Vector::default();
+        let mut selected_h: Hint<P> = Hint::default();
         let mut found_valid: u32 = 0;
 
         for round in 0..MAX_ROUNDS {
@@ -563,30 +612,65 @@ impl<P: MlDsaParams> SigningKey<P> {
             let z = &y + &cs1;
             let r0 = (&w - &cs2).low_bits::<P::TwoGamma2>();
 
-            let z_valid = z.infinity_norm() < P::GAMMA1_MINUS_BETA;
-            let r0_valid = r0.infinity_norm() < P::GAMMA2_MINUS_BETA;
-            let zr0_mask = if z_valid && r0_valid { 1u32 } else { 0u32 };
+            // Constant-time validity checks using bitmasks
+            let z_valid = (z.infinity_norm() < P::GAMMA1_MINUS_BETA) as u32;
+            let r0_valid = (r0.infinity_norm() < P::GAMMA2_MINUS_BETA) as u32;
+            let zr0_mask = z_valid & r0_valid;
 
             let ct0 = (&c_hat * &self.t0_hat).ntt_inverse();
             let minus_ct0 = -&ct0;
             let w_cs2_ct0 = &(&w - &cs2) + &ct0;
             let h = Hint::<P>::new(&minus_ct0, &w_cs2_ct0);
 
-            let ct0_valid = ct0.infinity_norm() < P::Gamma2::U32;
-            let h_valid = h.hamming_weight() <= P::Omega::USIZE;
-            let ct0h_mask = if ct0_valid && h_valid { 1u32 } else { 0u32 };
+            let ct0_valid = (ct0.infinity_norm() < P::Gamma2::U32) as u32;
+            let h_valid = (h.hamming_weight() <= P::Omega::USIZE) as u32;
+            let ct0h_mask = ct0_valid & h_valid;
 
             let candidate_valid_mask = zr0_mask & ct0h_mask;
             let should_select_mask = candidate_valid_mask & ((1u32 - found_valid) as u32);
 
-            if should_select_mask != 0 {
-                let z = z.mod_plus_minus::<SpecQ>();
-                selected_signature = Some(Signature { c_tilde, z, h });
-                found_valid = 1;
+            // Constant-time conditional update using bitmasks
+            // Convert mask to full-width (0xFFFFFFFF or 0x00000000)
+            let mask = should_select_mask.wrapping_neg() as u32;
+
+            // Update found_valid (cumulative OR)
+            found_valid |= should_select_mask;
+
+            // Conditionally update selected_c_tilde
+            for i in 0..P::Lambda::USIZE {
+                selected_c_tilde[i] = (selected_c_tilde[i] & !mask as u8) | (c_tilde[i] & mask as u8);
+            }
+
+            // Conditionally update selected_z
+            let z_candidate = z.mod_plus_minus::<SpecQ>();
+            // Iterate over polynomials in the vector, then over coefficients in each polynomial
+            for (sel_poly, cand_poly) in selected_z.0.iter_mut().zip(z_candidate.0.iter()) {
+                for (sel_elem, cand_elem) in sel_poly.0.iter_mut().zip(cand_poly.0.iter()) {
+                    let new_val = (sel_elem.0 & !mask) | (cand_elem.0 & mask);
+                    *sel_elem = Elem::new(new_val);
+                }
+            }
+
+            // Conditionally update selected_h (Hint is Array<Array<bool, U256>, P::K>)
+            for i in 0..P::K::USIZE {
+                for j in 0..256 {
+                    let h_bit = h.0[i][j] as u32;
+                    let selected_bit = (selected_h.0[i][j] as u32 & !mask) | (h_bit & mask);
+                    selected_h.0[i][j] = selected_bit != 0;
+                }
             }
         }
 
-        None
+        // Convert to Option<Signature> at the end
+        if found_valid != 0 {
+            Some(Signature {
+                c_tilde: selected_c_tilde,
+                z: selected_z,
+                h: selected_h,
+            })
+        } else {
+            None
+        }
     }
 
     /// This auxiliary function derives a `VerifyingKey` from a bare
