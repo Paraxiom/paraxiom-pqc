@@ -48,10 +48,13 @@ qrng = ["dep:sha3"]
 # Enable benchmarking features to expose internal functions for timing analysis
 bench = ["ml-dsa/bench"]
 
+<<<<<<< HEAD
 # [[example.dudect_components]]
 # default-features = false
 # features = ["ml-dsa/bench"]
 
+=======
+>>>>>>> origin/main
 [dev-dependencies]
 criterion = "0.5"
 
