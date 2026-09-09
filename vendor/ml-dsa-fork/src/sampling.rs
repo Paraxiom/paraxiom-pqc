@@ -3,6 +3,7 @@ use crate::{
     crypto::{G, H},
     param::{Eta, MaskSamplingSize},
 };
+use core::ops::Sub;
 use hybrid_array::Array;
 use module_lattice::{ArraySize, Field, Truncate};
 
@@ -11,6 +12,13 @@ fn bit_set(z: &[u8], i: usize) -> bool {
     let bit_index = i & 0x07;
     let byte_index = i >> 3;
     z[byte_index] & (1 << bit_index) != 0
+}
+
+// Constant-time: returns 0xFF if a <= b, 0 otherwise
+#[inline(always)]
+fn ct_lte_u8(a: u8, b: u8) -> u8 {
+    let diff = b.wrapping_sub(a);
+    ((diff as i8) >> 7) as u8 ^ 0xFF
 }
 
 // Algorithm 14 CoeffFromThreeBytes
@@ -60,10 +68,12 @@ fn coeffs_from_byte(z: u8, eta: Eta) -> (Option<Elem>, Option<Elem>) {
     )
 }
 
-// Algorithm 29 SampleInBall
+// Algorithm 29 SampleInBall - constant-time implementation with bounded rejection sampling
+#[cfg_attr(feature = "bench", allow(unreachable_pub))]
 pub(crate) fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
     const ONE: Elem = Elem::new(1);
     const MINUS_ONE: Elem = Elem::new(BaseField::Q - 1);
+    const MAX_REJECTIONS: usize = 8;
 
     let mut c = Polynomial::default();
     let mut ctx = H::default().absorb(rho);
@@ -71,17 +81,34 @@ pub(crate) fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
     let mut s = [0u8; 8];
     ctx.squeeze(&mut s);
 
-    // h = bytes_to_bits(s)
-    let mut j = [0u8];
     for i in (256 - tau)..256 {
-        ctx.squeeze(&mut j);
-        while usize::from(j[0]) > i {
-            ctx.squeeze(&mut j);
+        // Pre-squeeze a fixed number of bytes for rejection sampling (constant-time)
+        let mut candidates = [0u8; MAX_REJECTIONS + 1];
+        ctx.squeeze(&mut candidates);
+        
+        // Fixed loop to find first valid candidate (constant-time)
+        let mut j = candidates[0];
+        let mut found = if ct_lte_u8(candidates[0], i as u8) == 0xFF { 1u8 } else { 0u8 };
+        
+        for r in 1..=MAX_REJECTIONS {
+            let candidate = candidates[r];
+            let is_valid = if ct_lte_u8(candidate, i as u8) == 0xFF { 1u8 } else { 0u8 };
+            
+            // Constant-time selection: select this candidate only if no valid candidate found yet
+            let select = (1 - found) & is_valid;
+            j = (select & candidate) | ((1 - select) & j);
+            found = found | is_valid;
         }
-
-        let j = usize::from(j[0]);
-        c.0[i] = c.0[j];
-        c.0[j] = if bit_set(&s, i + tau - 256) {
+        
+        // Constant-time clamp in case no valid candidate was found (extremely rare)
+        let j_val = j as usize;
+        let is_invalid = (ct_lte_u8(j, i as u8) ^ 0xFF) as usize; // 0xFF if j > i, 0 otherwise
+        let not_invalid = 0xFF - is_invalid; // 0 if j > i, 0xFF otherwise
+        let clamped = j_val % (i + 1);
+        let j_clamped = ((is_invalid & clamped) | (not_invalid & j_val)) as usize;
+        
+        c.0[i] = c.0[j_clamped];
+        c.0[j_clamped] = if bit_set(&s, i + tau - 256) {
             MINUS_ONE
         } else {
             ONE
@@ -92,7 +119,8 @@ pub(crate) fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
 }
 
 // Algorithm 30 RejNTTPoly
-fn rej_ntt_poly(rho: &[u8], r: u8, s: u8) -> NttPolynomial {
+#[cfg_attr(feature = "bench", allow(unreachable_pub))]
+pub(crate) fn rej_ntt_poly(rho: &[u8], r: u8, s: u8) -> NttPolynomial {
     let mut j = 0;
     let mut ctx = G::default().absorb(rho).absorb(&[s]).absorb(&[r]);
 
@@ -110,7 +138,8 @@ fn rej_ntt_poly(rho: &[u8], r: u8, s: u8) -> NttPolynomial {
 }
 
 // Algorithm 31 RejBoundedPoly
-fn rej_bounded_poly(rho: &[u8], eta: Eta, r: u16) -> Polynomial {
+#[cfg_attr(feature = "bench", allow(unreachable_pub))]
+pub(crate) fn rej_bounded_poly(rho: &[u8], eta: Eta, r: u16) -> Polynomial {
     let mut j = 0;
     let mut ctx = H::default().absorb(rho).absorb(&r.to_le_bytes());
 

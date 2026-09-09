@@ -17,6 +17,8 @@ rand_core = ["dep:rand_core", "signature/rand_core"]
 alloc = ["pkcs8?/alloc"]
 zeroize = ["dep:zeroize"]
 pkcs8 = ["dep:const-oid", "dep:pkcs8"]
+# Benchmark feature to expose internal functions for timing analysis
+bench = []
 
 [dependencies]
 module-lattice = { version = "0.1.0-rc.1" }

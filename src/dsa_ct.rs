@@ -65,7 +65,11 @@ use ml_dsa::{MlDsaParams, Signature, SigningKey};
 /// `high_bits`/`low_bits`, `Hint`) and emits the standard `(c_tilde, z, h)`
 /// encoding, so signatures verify with any compliant FIPS 204 verifier.
 ///
-/// # Warning: stack requirements
+/// # Stack Requirement
+///
+/// **Stack Requirement:** This signing routine requires 64 MB of stack space to
+/// execute safely. Ensure calling threads are configured with adequate stack
+/// size to avoid stack overflow errors.
 ///
 /// Testing showed the kernel overflows the default (~8 MiB) thread stack during
 /// key expansion and the 256-round candidate generation. Run tests and
@@ -74,7 +78,7 @@ use ml_dsa::{MlDsaParams, Signature, SigningKey};
 /// not a constant-time concern.
 ///
 /// `ctx` is the FIPS 204 context string (maximum 255 bytes).
-pub(crate) fn sign_constant_time<P>(
+pub fn sign_constant_time<P>(
     signing_key: &SigningKey<P>,
     msg: &[u8],
     ctx: &[u8],
@@ -82,7 +86,27 @@ pub(crate) fn sign_constant_time<P>(
 where
     P: MlDsaParams,
 {
-    signing_key.sign_deterministic_constant_time(msg, ctx)
+    if ctx.len() > 255 {
+        return Err(ml_dsa::Error::new());
+    }
+
+    const MAX_ATTEMPTS: u32 = 4;
+    let mut last_err = ml_dsa::Error::new();
+    for attempt in 0..MAX_ATTEMPTS {
+        match signing_key.sign_deterministic_constant_time(msg, ctx) {
+            Ok(signature) => return Ok(signature),
+            Err(e) => {
+                last_err = e;
+                if attempt == 0 {
+                    eprintln!(
+                        "warn: constant-time sign attempt failed (retrying up to {} times)",
+                        MAX_ATTEMPTS
+                    );
+                }
+            }
+        }
+    }
+    Err(last_err)
 }
 
 #[cfg(test)]

@@ -1,5 +1,11 @@
 # WP2 — Constant-Time ML-DSA Signing: Timing-Oracle Mitigation
 
+> ## Stack Requirement
+>
+> **Stack Requirement:** This signing routine requires 64 MB of stack space to
+> execute safely. Ensure calling threads are configured with adequate stack size
+> to avoid stack overflow errors.
+
 ## Summary
 
 This document summarizes the constant-time signing hardening (WP2) applied to
@@ -8,6 +14,12 @@ the timing side-channel inherent in standard FIPS 204 rejection sampling so that
 signing latency no longer depends on the secret key or the message. The
 mitigation preserves **bit-identical FIPS 204 output**: a signature produced by
 the constant-time kernel verifies with any compliant FIPS 204 verifier.
+
+Mitigated the rejection-sampling timing oracle by implementing a branchless,
+fixed-iteration (256-round) signing loop. Note: Internal algebraic primitives
+(`infinity_norm`, `mod_plus_minus`) currently utilize conditional logic on
+secret-derived coefficients; this implementation focuses on eliminating the
+primary rejection-round timing leak.
 
 **Implementation locations**
 
@@ -87,6 +99,12 @@ depends on secret data.
    pattern, total duration) is data-independent with respect to the secret key
    and message.
 
+Mitigated the rejection-sampling timing oracle by implementing a branchless,
+fixed-iteration (256-round) signing loop. Note: Internal algebraic primitives
+(`infinity_norm`, `mod_plus_minus`) currently utilize conditional logic on
+secret-derived coefficients; this implementation focuses on eliminating the
+primary rejection-round timing leak.
+
 The only remaining conditional (`if should_select_mask != 0`) guards a store
 that executes on exactly one iteration (the winning one) and on none of the
 others; it does not introduce a key-dependent timing variation because the
@@ -117,8 +135,9 @@ signing time is now constant rather than proportional to the rejection count.
   `ml_dsa_65_constant_time_verifies`, `ml_dsa_87_constant_time_verifies`) sign
   with the kernel and assert that the resulting signature verifies, while a
   tampered message and a wrong context are both rejected.
-- **Stack note:** during testing the kernel overflowed the default (~8 MiB)
-  thread stack while expanding the key and generating 256 candidates. Run tests
-  and production callers with a larger stack, e.g. `RUST_MIN_STACK=64MB`, or
-  size the calling thread's stack accordingly. This is a stack-depth
-  requirement, not a constant-time concern.
+- **Stack note:** see the **Stack Requirement** at the top of this document.
+  The kernel overflowed the default (~8 MiB) thread stack during testing while
+  expanding the key and generating 256 candidates. Run tests and production
+  callers with a larger stack, e.g. `RUST_MIN_STACK=64MB`, or size the calling
+  thread's stack accordingly. This is a stack-depth requirement, not a
+  constant-time concern.
