@@ -246,3 +246,90 @@ mod test {
         // TODO measure uniformity
     }
 }
+
+#[cfg(test)]
+mod sample_in_ball_guard {
+    use super::*;
+
+    /// SampleInBall is deterministic in its seed, and FIPS 204 Algorithm 29
+    /// fixes exactly how bytes are drawn from the SHAKE stream: one at a time,
+    /// rejecting until j <= i. Any change to the draw pattern changes the
+    /// challenge polynomial, which silently makes our signatures unverifiable
+    /// by every other ML-DSA implementation.
+    ///
+    /// This repository carries no ACVP vectors, so nothing else would catch
+    /// that. This fingerprint stands in for them. If it changes, either the
+    /// draw pattern changed or the sampler is wrong, and the burden is on the
+    /// change to prove otherwise against real ACVP vectors.
+    #[test]
+    fn draw_pattern_is_unchanged() {
+        const ZERO: Elem = Elem::new(0);
+        const PLUS: Elem = Elem::new(1);
+        let mut fp: u64 = 1469598103934665603;
+        for tau in [39usize, 49, 60] {
+            for seed in 0u8..8 {
+                let c = sample_in_ball(&[seed; 32], tau);
+                for (i, e) in c.0.iter().enumerate() {
+                    let code: u64 = if *e == ZERO { 0 } else if *e == PLUS { 1 } else { 2 };
+                    fp ^= (i as u64).wrapping_mul(31).wrapping_add(code);
+                    fp = fp.wrapping_mul(1099511628211);
+                }
+            }
+        }
+        assert_eq!(
+            fp, 1_887_670_544_366_839_211,
+            "SampleInBall no longer draws from SHAKE the way FIPS 204 specifies, \
+             so signatures from this build will not verify against a conforming \
+             implementation"
+        );
+    }
+
+    /// The security of the Fiat-Shamir transform rests on the challenge being
+    /// drawn from roughly C(256, tau) * 2^tau polynomials. That requires the
+    /// tau nonzero coefficients to land across the whole ring.
+    ///
+    /// The shuffle in Algorithm 29 only moves a coefficient down to index j,
+    /// so a sampler whose j collapses to a small set leaves almost every
+    /// nonzero stranded in the top tau positions. The challenge space then
+    /// collapses from about 2^257 to about 2^tau, which is a forgery relevant
+    /// weakening that a timing audit cannot see: a function that ignores its
+    /// data is perfectly constant time.
+    #[test]
+    fn challenge_positions_stay_spread() {
+        const ZERO: Elem = Elem::new(0);
+        let tau = 60usize;
+        let boundary = 256 - tau;
+        let mut below = 0usize;
+        let mut total = 0usize;
+        let mut low_indices_used = [false; 8];
+        for seed in 0u8..16 {
+            let c = sample_in_ball(&[seed; 32], tau);
+            for (i, e) in c.0.iter().enumerate() {
+                if *e != ZERO {
+                    total += 1;
+                    if i < boundary {
+                        below += 1;
+                    }
+                    if i < 8 {
+                        low_indices_used[i] = true;
+                    }
+                }
+            }
+        }
+        // A correct sampler puts roughly three quarters of them below the
+        // boundary. Half of that is a generous floor that still fails hard on
+        // a collapsed shuffle target.
+        assert!(
+            below * 3 > total,
+            "challenge coefficients collapsed into the top positions: only {below} \
+             of {total} landed below index {boundary}, so the shuffle target is \
+             not ranging over 0..=i"
+        );
+        let used = low_indices_used.iter().filter(|b| **b).count();
+        assert!(
+            used >= 6,
+            "only {used} of the first 8 indices were ever used as a shuffle target, \
+             which means j is being truncated rather than selected"
+        );
+    }
+}
