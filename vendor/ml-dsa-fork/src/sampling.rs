@@ -61,6 +61,14 @@ fn coeffs_from_byte(z: u8, eta: Eta) -> (Option<Elem>, Option<Elem>) {
 }
 
 // Algorithm 29 SampleInBall
+//
+// Constant-time hardening is unnecessary here: rho is the challenge seed
+// (c_tilde), which is derived entirely from public values (the message
+// and the commitment vector w1) and is transmitted inside the signature.
+// Its SHAKE draw pattern is therefore public, and the rejection-sampling
+// loop leaks no secret information. The reference implementation is
+// maintained to preserve the exact challenge-space entropy specified by
+// FIPS 204.
 pub(crate) fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
     const ONE: Elem = Elem::new(1);
     const MINUS_ONE: Elem = Elem::new(BaseField::Q - 1);
@@ -71,7 +79,6 @@ pub(crate) fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
     let mut s = [0u8; 8];
     ctx.squeeze(&mut s);
 
-    // h = bytes_to_bits(s)
     let mut j = [0u8];
     for i in (256 - tau)..256 {
         ctx.squeeze(&mut j);
@@ -92,7 +99,8 @@ pub(crate) fn sample_in_ball(rho: &[u8], tau: usize) -> Polynomial {
 }
 
 // Algorithm 30 RejNTTPoly
-fn rej_ntt_poly(rho: &[u8], r: u8, s: u8) -> NttPolynomial {
+#[cfg_attr(feature = "bench", allow(unreachable_pub))]
+pub(crate) fn rej_ntt_poly(rho: &[u8], r: u8, s: u8) -> NttPolynomial {
     let mut j = 0;
     let mut ctx = G::default().absorb(rho).absorb(&[s]).absorb(&[r]);
 
@@ -110,7 +118,8 @@ fn rej_ntt_poly(rho: &[u8], r: u8, s: u8) -> NttPolynomial {
 }
 
 // Algorithm 31 RejBoundedPoly
-fn rej_bounded_poly(rho: &[u8], eta: Eta, r: u16) -> Polynomial {
+#[cfg_attr(feature = "bench", allow(unreachable_pub))]
+pub(crate) fn rej_bounded_poly(rho: &[u8], eta: Eta, r: u16) -> Polynomial {
     let mut j = 0;
     let mut ctx = H::default().absorb(rho).absorb(&r.to_le_bytes());
 
