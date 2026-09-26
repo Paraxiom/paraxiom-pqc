@@ -42,6 +42,8 @@ sha3 = { version = "0.11", optional = true }
 default = ["sign"]
 # Digital signatures: ML-DSA (FIPS 204), SLH-DSA (FIPS 205), Falcon.
 sign = ["dep:ml-dsa", "dep:slh-dsa", "dep:falcon-rs"]
+# Falcon verification only (`paraxiom_pqc::falcon`), without ml-dsa/slh-dsa.
+falcon-verify = ["dep:falcon-rs"]
 # Seed post-quantum key generation from a pluggable quantum entropy source
 # (QKD/QRNG hardware). Default OFF — the default build uses the OS RNG.
 qrng = ["dep:sha3"]

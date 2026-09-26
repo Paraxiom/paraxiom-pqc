@@ -282,7 +282,7 @@ fn slh_dsa_verify<P: slh_dsa::ParameterSet>(
 
 // ── Falcon (pending FIPS 206) ───────────────────────────────────────────────
 
-use falcon::safe_api::{DomainSeparation, FnDsaKeyPair, FnDsaSignature};
+use falcon::safe_api::{DomainSeparation, FnDsaKeyPair};
 
 fn falcon_keygen(logn: u32, alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
     let kp = FnDsaKeyPair::generate(logn).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
@@ -311,10 +311,7 @@ fn falcon_sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
 }
 
 fn falcon_verify(vk: &VerificationKey, msg: &[u8], sig: &Signature) -> Result<bool, PqcError> {
-    match FnDsaSignature::verify(&sig.bytes, &vk.bytes, msg, &DomainSeparation::None) {
-        Ok(()) => Ok(true),
-        Err(_) => Ok(false),
-    }
+    Ok(crate::falcon::verify(&vk.bytes, msg, &sig.bytes))
 }
 
 #[cfg(test)]

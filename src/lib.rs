@@ -11,6 +11,8 @@
 #[cfg(feature = "sign")]
 mod dsa_ct;
 pub mod error;
+#[cfg(any(feature = "sign", feature = "falcon-verify"))]
+pub mod falcon;
 pub mod kem;
 #[cfg(feature = "qrng")]
 pub mod qrng;
