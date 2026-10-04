@@ -33,6 +33,24 @@ let sig = sign(&kp.sk, b"message").unwrap();
 assert!(verify(&kp.vk, b"message", &sig).unwrap());
 ```
 
+### Key combiner (feature `combiner`)
+
+Combines a QKD key, ML-KEM shared secrets or a pre-shared key into one 32-byte key bound to a
+transcript. The mechanism set is a per-link policy, and a missing or reordered input is refused
+(fail closed). The output stays secret as long as at least one input does.
+
+```rust
+use paraxiom_pqc::combiner::{Mechanism, Policy, Secret};
+
+let policy = Policy::new(&[Mechanism::Qkd, Mechanism::MlKem768]).unwrap();
+let key = policy.combine(
+    &[Secret::new(Mechanism::Qkd, &qkd_key), Secret::new(Mechanism::MlKem768, &ss_enc.bytes)],
+    &transcript_hash,
+).unwrap();
+```
+
+`combiner::qkd_pqc_v2` reproduces the QKD + PQC mixing used by pq-transport-gateway byte for byte.
+
 ## Why This Exists
 
 The PQC ecosystem is fragmented: `pqcrypto-*` crates wrap C code from PQClean, `ml-kem`/`ml-dsa`/`slh-dsa` are separate crates with incompatible `rand_core` versions, and `falcon-rs` has its own API. `paraxiom-pqc` unifies them behind one API with zero C dependencies.
@@ -45,6 +63,9 @@ The PQC ecosystem is fragmented: `pqcrypto-*` crates wrap C code from PQClean, `
 - Algorithm dispatch totality
 - FIPS standard coverage completeness
 - Zero-C dependency verification
+
+Plus `lean/Combiner.lean` (core Lean): the combiner's input encoding is injective, so two
+different input lists never hash the same bytes.
 
 Published: [DOI 10.5281/zenodo.18663125](https://doi.org/10.5281/zenodo.18663125)
 

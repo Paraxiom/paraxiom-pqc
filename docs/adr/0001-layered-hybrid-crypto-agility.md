@@ -74,6 +74,9 @@ justifies it.
 
 1. `paraxiom-pqc`: **combiner API** — KDF over an ordered set of shared secrets / signatures,
    mechanism set selected by config (the agility core).
+   *Status 2026-10-04: implemented as feature `combiner` (`src/combiner.rs`, `Policy`,
+   fail-closed), with `qkd_pqc_v2` matching PQTG `mix_keys` on its KAT vectors and the
+   encoding injectivity proved in `lean/Combiner.lean`.*
 2. `paraxiom-pqc`: **PQC⊕PQC** combiners — sig (ML-DSA/Falcon ⊕ SLH-DSA) now; KEM after HQC.
 3. `paraxiom-pqc`: optional pure-Rust **classical** primitives (X25519, Ed25519) — for the
    classical⊕PQC compat mode ONLY, behind a feature flag.

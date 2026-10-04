@@ -10,6 +10,8 @@
 
 #[cfg(feature = "sign")]
 mod dsa_ct;
+#[cfg(feature = "combiner")]
+pub mod combiner;
 pub mod error;
 #[cfg(any(feature = "sign", feature = "falcon-verify"))]
 pub mod falcon;

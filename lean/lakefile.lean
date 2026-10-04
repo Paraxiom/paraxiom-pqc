@@ -7,7 +7,7 @@ package ParaxiomPQC where
 @[default_target]
 lean_lib ParaxiomPQC where
   srcDir := "."
-  roots := #[`ParaxiomPQC]
+  roots := #[`ParaxiomPQC, `Combiner]
 
 require mathlib from git
   "https://github.com/leanprover-community/mathlib4" @ "v4.27.0"

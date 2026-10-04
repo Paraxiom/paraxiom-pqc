@@ -47,6 +47,8 @@ falcon-verify = ["dep:falcon-rs"]
 # Seed post-quantum key generation from a pluggable quantum entropy source
 # (QKD/QRNG hardware). Default OFF — the default build uses the OS RNG.
 qrng = ["dep:sha3"]
+# Crypto-agile key combiner (ADR 0001): QKD, ML-KEM and pre-shared secrets into one key.
+combiner = ["dep:sha3"]
 
 [dev-dependencies]
 criterion = "0.5"
