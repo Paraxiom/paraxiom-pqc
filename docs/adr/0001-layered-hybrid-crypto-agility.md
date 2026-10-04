@@ -94,6 +94,51 @@ justifies it.
 - Treating classical⊕PQC as anything but a compatibility concession.
 - Browser-edge PQC before browser support exists.
 
+## Status (2026-10-04)
+
+| Plan step | Status |
+|---|---|
+| 1. Combiner API | **Done.** Feature `combiner`, PR #18, merged 2026-10-04. Not yet in a tagged release (the crate is still 0.1.3). |
+| 2. PQC⊕PQC combiners | Signatures: not started. KEM: blocked until a pure-Rust HQC exists (see the 2026-08-08 spike below). |
+| 3. Classical compat primitives | Not started. |
+| 4. X.509 / LAMPS encoding | Not started. |
+| 5. Wire into pqtg, qssl, qssh | **Deferred on purpose** for pqtg (see below). qssl and qssh: not started. |
+| 6. Transparence / QH server-to-server | Not started. |
+
+### PQTG and the combiner: two copies, same output (decision 2026-10-04)
+
+**Current state.** PQTG keeps its own QKD + PQC mixing function, `mix_keys` in
+`pq-transport-gateway/src/crypto.rs` (label `pqtg-key-mixing-v2`).
+`paraxiom_pqc::combiner::qkd_pqc_v2` is a byte-identical copy. `tests/combiner.rs` in this
+repo checks it against PQTG's own vectors (`tests/vectors/handshake-v2.json`, 256- and
+512-bit QKD keys).
+
+**Decision: do not migrate PQTG yet.**
+
+- PQTG is a released product. Changing its handshake code requires a rebuild and a full
+  handshake retest, even with byte-identical output.
+- PQTG would need to pin a tagged release of this crate (0.1.4), which does not exist yet.
+- The switch adds no capability by itself: same keys, same wire format, same behaviour.
+
+**Migrate when any of these happens:**
+
+- PQTG needs the per-link `Policy`, for example to require QKD + ML-KEM on a link and refuse
+  to fall back;
+- qssl or qssh adopt the combiner, so one shared implementation starts to matter;
+- the mixing itself needs a fix. Then make the fix once, here, and migrate PQTG with it.
+
+**How to migrate:**
+
+1. Tag this crate 0.1.4 (or later) with the `combiner` feature.
+2. In PQTG, depend on that tag with `features = ["combiner"]` and replace `mix_keys` with
+   `qkd_pqc_v2`, or with a `Policy` if the per-link check is wanted.
+3. Leave PQTG's `handshake-v2.json` vectors unchanged: they must still pass byte for byte.
+4. Run PQTG's full test suite and the two-host handshake test before release.
+
+**Until then, keep the two copies identical.** If either one changes, change the other the
+same way. Two tests guard this: this repo's `tests/combiner.rs` fails if `qkd_pqc_v2`
+drifts from PQTG's vectors, and PQTG's `tests/handshake_kat.rs` fails if `mix_keys` drifts.
+
 ---
 
 ## Addendum — 2026-08-08: Simon/DCP lattice claim elevates the KEM-diversity item
