@@ -75,7 +75,7 @@ Published: [DOI 10.5281/zenodo.18663125](https://doi.org/10.5281/zenodo.18663125
 
 ## License
 
-**GPL-3.0-only**, or a **Paraxiom commercial licence**, at your option — see `LICENSE.md`.
+**GPL-3.0-only**, or a **Paraxiom commercial licence**, at your option — see `LICENSING.md`.
 
 Free under GPL-3.0 for research, evaluation and open-source products. Embedding in a
 **proprietary** product requires a commercial licence: sylvain@paraxiom.org
