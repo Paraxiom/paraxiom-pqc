@@ -34,7 +34,7 @@ zeroize = { version = "1", features = ["derive"] }
 thiserror = "2"
 
 # Optional: `qrng` feature — SHAKE256 entropy conditioning for QRNG-seeded keygen.
-sha3 = { version = "0.11", optional = true }
+sha3 = { version = "0.12", optional = true }
 
 [features]
 # `sign` is on by default so existing consumers are unaffected. KEM-only
