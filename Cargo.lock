@@ -605,7 +605,7 @@ dependencies = [
  "hex",
  "hex-literal",
  "hybrid-array",
- "module-lattice",
+ "module-lattice 0.2.3",
  "pkcs8",
  "rand_core 0.10.1",
  "sha3",
@@ -621,7 +621,7 @@ checksum = "dbc807923f3029ad8676c21a667e1dc941e323538190a6d46cde130e7d55beef"
 dependencies = [
  "hybrid-array",
  "kem",
- "module-lattice",
+ "module-lattice 0.1.0",
  "rand_core 0.10.1",
  "sha3",
  "subtle",
@@ -636,6 +636,16 @@ dependencies = [
  "hybrid-array",
  "num-traits",
  "subtle",
+]
+
+[[package]]
+name = "module-lattice"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "0c61b87c9683ab7cb1c6871d261ad5479b6b10ceb52c4352aaca3b5d35a8febe"
+dependencies = [
+ "hybrid-array",
+ "num-traits",
 ]
 
 [[package]]
