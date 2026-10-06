@@ -5,7 +5,7 @@ Ce logiciel est distribué sous **deux régimes, au choix du destinataire**.
 ## 1. GNU General Public License v3.0
 
 Régime par défaut. Vous pouvez utiliser, étudier, modifier et redistribuer ce
-logiciel selon les termes de la GPL-3.0 (voir `LICENSE-GPL3`).
+logiciel selon les termes de la GPL-3.0 (voir `LICENSE`).
 
 La GPL-3.0 est *réciproque* : si vous distribuez un produit qui incorpore ce
 logiciel ou en dérive, vous devez publier le code source complet de ce produit
