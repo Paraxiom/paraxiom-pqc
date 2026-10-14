@@ -17,7 +17,8 @@ remediation timeline after triage. Coordinated disclosure is appreciated.
 
 | Version | Supported |
 |---------|-----------|
-| 0.1.x   | ✅        |
+| 0.2.x   | ✅        |
+| 0.1.x   | ❌ (secret keys are not cleared from memory; upgrade to 0.2) |
 
 ## Scope & Cryptographic Note
 

@@ -1,6 +1,6 @@
 [package]
 name = "paraxiom-pqc"
-version = "0.1.4"
+version = "0.2.0"
 edition = "2021"
 license = "GPL-3.0-only"
 description = "Paraxiom post-quantum cryptography in pure Rust, with no C code. One API for ML-KEM, ML-DSA, SLH-DSA and Falcon."
