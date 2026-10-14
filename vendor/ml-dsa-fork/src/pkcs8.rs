@@ -158,7 +158,8 @@ where
     fn try_from(private_key_info: ::pkcs8::PrivateKeyInfoRef<'_>) -> ::pkcs8::Result<Self> {
         let keypair = KeyPair::try_from(private_key_info)?;
 
-        Ok(keypair.signing_key)
+        // KeyPair implements Drop under `zeroize`, so the key is cloned rather than moved out.
+        Ok(keypair.signing_key.clone())
     }
 }
 

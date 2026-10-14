@@ -219,6 +219,18 @@ impl<P: MlDsaParams> KeyPair<P> {
     }
 }
 
+// The seed regenerates the whole signing key. Upstream rc.7 does not clear it. The signing
+// key clears itself through its own Drop.
+#[cfg(feature = "zeroize")]
+impl<P: MlDsaParams> Drop for KeyPair<P> {
+    fn drop(&mut self) {
+        self.seed.zeroize();
+    }
+}
+
+#[cfg(feature = "zeroize")]
+impl<P: MlDsaParams> ZeroizeOnDrop for KeyPair<P> {}
+
 impl<P: MlDsaParams> AsRef<VerifyingKey<P>> for KeyPair<P> {
     fn as_ref(&self) -> &VerifyingKey<P> {
         &self.verifying_key
@@ -299,6 +311,11 @@ impl<P: MlDsaParams> Drop for SigningKey<P> {
         self.s1.zeroize();
         self.s2.zeroize();
         self.t0.zeroize();
+        // The NTT forms are as secret as s1, s2 and t0 (the NTT is invertible). Upstream
+        // rc.7 leaves them in memory; A_hat is public (derived from rho) and is not cleared.
+        self.s1_hat.zeroize();
+        self.s2_hat.zeroize();
+        self.t0_hat.zeroize();
     }
 }
 
@@ -341,8 +358,9 @@ impl<P: MlDsaParams> SigningKey<P> {
     /// signing key.
     #[must_use]
     pub fn from_seed(seed: &Seed) -> Self {
-        let kp = P::from_seed(seed);
-        kp.signing_key
+        // Built without a KeyPair: KeyPair implements Drop under `zeroize`, so its fields
+        // cannot be moved out, and skipping it avoids one more copy of the seed.
+        keygen_internal::<P>(seed).0
     }
 
     /// This method reflects the ML-DSA.Sign_internal algorithm from FIPS 204. It does not
@@ -997,38 +1015,45 @@ where
     where
         P: MlDsaParams,
     {
-        // Derive seeds
-        let mut h = H::default()
-            .absorb(xi)
-            .absorb(&[P::K::U8])
-            .absorb(&[P::L::U8]);
-
-        let rho: B32 = h.squeeze_new();
-        let rhop: B64 = h.squeeze_new();
-        let K: B32 = h.squeeze_new();
-
-        // Sample private key components
-        let A_hat = expand_a::<P::K, P::L>(&rho);
-        let s1 = expand_s::<P::L>(&rhop, P::Eta::ETA, 0);
-        let s2 = expand_s::<P::K>(&rhop, P::Eta::ETA, P::L::USIZE);
-
-        // Compute derived values
-        let As1_hat = &A_hat * &s1.ntt();
-        let t = &As1_hat.ntt_inverse() + &s2;
-
-        // Compress and encode
-        let (t1, t0) = t.power2round();
-
-        let verifying_key = VerifyingKey::new(rho, t1, Some(A_hat.clone()), None);
-        let signing_key =
-            SigningKey::new(rho, K, verifying_key.tr.clone(), s1, s2, t0, Some(A_hat));
-
+        let (signing_key, verifying_key) = keygen_internal::<P>(xi);
         KeyPair {
             signing_key,
             verifying_key,
             seed: xi.clone(),
         }
     }
+}
+
+/// ML-DSA.KeyGen_internal (FIPS 204, Algorithm 6), returning the two keys without the
+/// [`KeyPair`] wrapper, so that [`SigningKey::from_seed`] does not have to move a field out of a
+/// type that implements `Drop`.
+fn keygen_internal<P: MlDsaParams>(xi: &Seed) -> (SigningKey<P>, VerifyingKey<P>) {
+    // Derive seeds
+    let mut h = H::default()
+        .absorb(xi)
+        .absorb(&[P::K::U8])
+        .absorb(&[P::L::U8]);
+
+    let rho: B32 = h.squeeze_new();
+    let rhop: B64 = h.squeeze_new();
+    let K: B32 = h.squeeze_new();
+
+    // Sample private key components
+    let A_hat = expand_a::<P::K, P::L>(&rho);
+    let s1 = expand_s::<P::L>(&rhop, P::Eta::ETA, 0);
+    let s2 = expand_s::<P::K>(&rhop, P::Eta::ETA, P::L::USIZE);
+
+    // Compute derived values
+    let As1_hat = &A_hat * &s1.ntt();
+    let t = &As1_hat.ntt_inverse() + &s2;
+
+    // Compress and encode
+    let (t1, t0) = t.power2round();
+
+    let verifying_key = VerifyingKey::new(rho, t1, Some(A_hat.clone()), None);
+    let signing_key = SigningKey::new(rho, K, verifying_key.tr.clone(), s1, s2, t0, Some(A_hat));
+
+    (signing_key, verifying_key)
 }
 
 #[cfg(test)]
@@ -1063,8 +1088,8 @@ mod test {
         let kp = P::from_seed(&seed);
         assert_eq!(kp.to_seed(), seed);
 
-        let sk = kp.signing_key;
-        let vk = kp.verifying_key;
+        let sk = kp.signing_key.clone();
+        let vk = kp.verifying_key.clone();
 
         let vk_bytes = vk.encode();
         let vk2 = VerifyingKey::<P>::decode(&vk_bytes);
@@ -1097,8 +1122,8 @@ mod test {
         P: MlDsaParams + PartialEq,
     {
         let kp = P::from_seed(&Array::default());
-        let sk = kp.signing_key;
-        let vk = kp.verifying_key;
+        let sk = kp.signing_key.clone();
+        let vk = kp.verifying_key.clone();
         let vk_derived = sk.verifying_key();
 
         assert!(vk == vk_derived);
@@ -1116,8 +1141,8 @@ mod test {
         P: MlDsaParams,
     {
         let kp = P::from_seed(&Array::default());
-        let sk = kp.signing_key;
-        let vk = kp.verifying_key;
+        let sk = kp.signing_key.clone();
+        let vk = kp.verifying_key.clone();
 
         let M = b"Hello world";
         let rnd = Array([0u8; 32]);
@@ -1140,8 +1165,8 @@ mod test {
             P: MlDsaParams,
         {
             let kp = P::from_seed(&Array::default());
-            let sk = kp.signing_key;
-            let vk = kp.verifying_key;
+            let sk = kp.signing_key.clone();
+            let vk = kp.verifying_key.clone();
 
             let M = b"Hello world";
             let rnd = Array([0u8; 32]);
@@ -1162,8 +1187,8 @@ mod test {
             P: MlDsaParams,
         {
             let kp = P::from_seed(&Array::default());
-            let sk = kp.signing_key;
-            let vk = kp.verifying_key;
+            let sk = kp.signing_key.clone();
+            let vk = kp.verifying_key.clone();
 
             let M = b"Hello world";
             let rnd = Array([0u8; 32]);
@@ -1184,8 +1209,8 @@ mod test {
             P: MlDsaParams,
         {
             let kp = P::from_seed(&Array::default());
-            let sk = kp.signing_key;
-            let vk = kp.verifying_key;
+            let sk = kp.signing_key.clone();
+            let vk = kp.verifying_key.clone();
 
             let M = b"Hello world";
             let rnd = Array([0u8; 32]);
@@ -1330,5 +1355,36 @@ mod test {
         test_debug::<MlDsa44>();
         test_debug::<MlDsa65>();
         test_debug::<MlDsa87>();
+    }
+
+    #[test]
+    #[cfg(feature = "zeroize")]
+    fn drop_clears_secret_key_material() {
+        use core::mem::ManuallyDrop;
+
+        fn check<P: MlDsaParams>() {
+            fn zeroize_on_drop<T: ZeroizeOnDrop>() {}
+            zeroize_on_drop::<SigningKey<P>>();
+            zeroize_on_drop::<KeyPair<P>>();
+
+            let mut kp = ManuallyDrop::new(P::from_seed(&Array([7u8; 32])));
+            assert_ne!(kp.seed, B32::default());
+            assert_ne!(kp.signing_key.s1_hat, NttVector::default());
+
+            // SAFETY: the value is dropped exactly once and never dropped again. Every field
+            // read below is a plain integer array stored inline, so it still holds a valid bit
+            // pattern after the destructors ran, and no heap memory is involved.
+            unsafe { ManuallyDrop::drop(&mut kp) };
+
+            assert_eq!(kp.seed, B32::default());
+            assert_eq!(kp.signing_key.K, B32::default());
+            assert_eq!(kp.signing_key.s1, Vector::default());
+            assert_eq!(kp.signing_key.s1_hat, NttVector::default());
+            assert_eq!(kp.signing_key.s2_hat, NttVector::default());
+            assert_eq!(kp.signing_key.t0_hat, NttVector::default());
+        }
+        check::<MlDsa44>();
+        check::<MlDsa65>();
+        check::<MlDsa87>();
     }
 }

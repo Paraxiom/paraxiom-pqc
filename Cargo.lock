@@ -636,6 +636,7 @@ dependencies = [
  "hybrid-array",
  "num-traits",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]

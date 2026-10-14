@@ -16,7 +16,9 @@ path = "src/lib.rs"
 default = ["rand_core"]
 rand_core = ["dep:rand_core", "signature/rand_core"]
 alloc = ["pkcs8?/alloc"]
-zeroize = ["dep:zeroize"]
+# Same definition as upstream ml-dsa 0.1.0-rc.7. Without the two sub-features the
+# `zeroize` feature does not compile (the key vectors and arrays lack `Zeroize`).
+zeroize = ["dep:zeroize", "hybrid-array/zeroize", "module-lattice/zeroize"]
 pkcs8 = ["dep:const-oid", "dep:pkcs8"]
 
 [dependencies]
