@@ -3,6 +3,7 @@
 //! Pure Rust. Zero C.
 
 use crate::PqcError;
+use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SignAlgorithm {
@@ -15,7 +16,13 @@ pub enum SignAlgorithm {
     Falcon1024,
 }
 
+/// Signing key (secret).
+///
+/// `bytes` is cleared when the key is dropped. Because of that `Drop` impl, `bytes` cannot be
+/// moved out of the key; borrow it, clone it, or take it with `std::mem::take(&mut sk.bytes)`.
+#[derive(Zeroize, ZeroizeOnDrop)]
 pub struct SigningKey {
+    #[zeroize(skip)]
     pub algorithm: SignAlgorithm,
     pub bytes: Vec<u8>,
 }
@@ -35,9 +42,9 @@ pub struct SignKeypair {
 
 pub fn keypair(alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
     match alg {
-        SignAlgorithm::MlDsa44 => ml_dsa_keygen::<ml_dsa::MlDsa44>(alg, random_seed()?),
-        SignAlgorithm::MlDsa65 => ml_dsa_keygen::<ml_dsa::MlDsa65>(alg, random_seed()?),
-        SignAlgorithm::MlDsa87 => ml_dsa_keygen::<ml_dsa::MlDsa87>(alg, random_seed()?),
+        SignAlgorithm::MlDsa44 => ml_dsa_keygen::<ml_dsa::MlDsa44>(alg, &*random_seed()?),
+        SignAlgorithm::MlDsa65 => ml_dsa_keygen::<ml_dsa::MlDsa65>(alg, &*random_seed()?),
+        SignAlgorithm::MlDsa87 => ml_dsa_keygen::<ml_dsa::MlDsa87>(alg, &*random_seed()?),
         SignAlgorithm::SlhDsaShake128f => slh_dsa_keygen::<slh_dsa::Shake128f>(alg, 16),
         SignAlgorithm::SlhDsaShake256s => slh_dsa_keygen::<slh_dsa::Shake256s>(alg, 32),
         SignAlgorithm::Falcon512 => falcon_keygen(9, alg),
@@ -58,19 +65,19 @@ pub fn keypair_qrng<S: crate::qrng::QuantumSource>(
     alg: SignAlgorithm,
     qrng: &mut crate::qrng::QrngRng<S>,
 ) -> Result<SignKeypair, PqcError> {
-    let mut seed = [0u8; 32];
+    let mut seed = Zeroizing::new([0u8; 32]);
     match alg {
         SignAlgorithm::MlDsa44 => {
-            qrng.fill(&mut seed);
-            ml_dsa_keygen::<ml_dsa::MlDsa44>(alg, seed)
+            qrng.fill(&mut *seed);
+            ml_dsa_keygen::<ml_dsa::MlDsa44>(alg, &seed)
         }
         SignAlgorithm::MlDsa65 => {
-            qrng.fill(&mut seed);
-            ml_dsa_keygen::<ml_dsa::MlDsa65>(alg, seed)
+            qrng.fill(&mut *seed);
+            ml_dsa_keygen::<ml_dsa::MlDsa65>(alg, &seed)
         }
         SignAlgorithm::MlDsa87 => {
-            qrng.fill(&mut seed);
-            ml_dsa_keygen::<ml_dsa::MlDsa87>(alg, seed)
+            qrng.fill(&mut *seed);
+            ml_dsa_keygen::<ml_dsa::MlDsa87>(alg, &seed)
         }
         _ => Err(PqcError::KeyGen(
             "QRNG-seeded keygen is currently wired for ML-DSA only".into(),
@@ -162,17 +169,25 @@ impl rand_core::TryRng for OsGetRandom {
 }
 impl rand_core::TryCryptoRng for OsGetRandom {}
 
-fn ml_dsa_sign_randomized<P: ml_dsa::MlDsaParams>(
+/// Rebuilds the backend ML-DSA key from the 32-byte seed in `sk`. The seed is borrowed, the
+/// one array copy is cleared on return, and the backend key clears itself on drop.
+fn ml_dsa_signing_key<P: ml_dsa::MlDsaParams>(
     sk: &SigningKey,
-    msg: &[u8],
-) -> Result<Signature, PqcError> {
-    let seed: [u8; 32] = sk
+) -> Result<ml_dsa::SigningKey<P>, PqcError> {
+    let seed: &[u8; 32] = sk
         .bytes
         .as_slice()
         .try_into()
         .map_err(|_| PqcError::Sign("invalid seed size".into()))?;
-    let b32 = ml_dsa::B32::from(seed);
-    let signing_key = ml_dsa::SigningKey::<P>::from_seed(&b32);
+    let b32 = Zeroizing::new(ml_dsa::B32::from(*seed));
+    Ok(ml_dsa::SigningKey::<P>::from_seed(&b32))
+}
+
+fn ml_dsa_sign_randomized<P: ml_dsa::MlDsaParams>(
+    sk: &SigningKey,
+    msg: &[u8],
+) -> Result<Signature, PqcError> {
+    let signing_key = ml_dsa_signing_key::<P>(sk)?;
     let mut rng = OsGetRandom;
     let sig = signing_key
         .sign_randomized(msg, b"", &mut rng)
@@ -196,20 +211,17 @@ pub fn verify(vk: &VerificationKey, msg: &[u8], sig: &Signature) -> Result<bool,
 
 // ── ML-DSA (FIPS 204) ──────────────────────────────────────────────────────
 
-fn random_seed() -> Result<[u8; 32], PqcError> {
-    let mut seed = [0u8; 32];
-    getrandom::fill(&mut seed).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
+fn random_seed() -> Result<Zeroizing<[u8; 32]>, PqcError> {
+    let mut seed = Zeroizing::new([0u8; 32]);
+    getrandom::fill(&mut *seed).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
     Ok(seed)
 }
 
 fn ml_dsa_keygen<P: ml_dsa::MlDsaParams + ml_dsa::KeyGen>(
     alg: SignAlgorithm,
-    seed: [u8; 32],
+    seed: &[u8; 32],
 ) -> Result<SignKeypair, PqcError> {
-    let b32 = ml_dsa::B32::from(seed);
-    // Original `P::from_seed(&b32)` is kept commented for context: it
-    // pulls VK encoding via the trait method, but we need the raw
-    // `SigningKey<P>` for the trait-method `verifying_key()` call below.
+    let b32 = Zeroizing::new(ml_dsa::B32::from(*seed));
     let sk = ml_dsa::SigningKey::<P>::from_seed(&b32);
     let vk_enc = sk.verifying_key().encode();
     Ok(SignKeypair {
@@ -225,13 +237,7 @@ fn ml_dsa_keygen<P: ml_dsa::MlDsaParams + ml_dsa::KeyGen>(
 }
 
 fn ml_dsa_sign<P: ml_dsa::MlDsaParams>(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
-    let seed: [u8; 32] = sk
-        .bytes
-        .as_slice()
-        .try_into()
-        .map_err(|_| PqcError::Sign("invalid seed size".into()))?;
-    let b32 = ml_dsa::B32::from(seed);
-    let signing_key = ml_dsa::SigningKey::<P>::from_seed(&b32);
+    let signing_key = ml_dsa_signing_key::<P>(sk)?;
     let sig = crate::dsa_ct::sign_constant_time(&signing_key, msg, b"")
         .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
     Ok(Signature {
@@ -267,9 +273,10 @@ fn slh_dsa_keygen<P: slh_dsa::ParameterSet>(
     alg: SignAlgorithm,
     n: usize,
 ) -> Result<SignKeypair, PqcError> {
-    // Generate 3*N random bytes for sk_seed, sk_prf, pk_seed
-    let mut seed = vec![0u8; 3 * n];
-    getrandom::fill(&mut seed).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
+    // Generate 3*N random bytes for sk_seed, sk_prf, pk_seed. The buffer is cleared on drop;
+    // the backend key clears itself too, and its encoding moves into our SigningKey.
+    let mut seed = Zeroizing::new(vec![0u8; 3 * n]);
+    getrandom::fill(seed.as_mut_slice()).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
     let sk =
         slh_dsa::SigningKey::<P>::slh_keygen_internal(&seed[..n], &seed[n..2 * n], &seed[2 * n..]);
     let sk_bytes = sk.to_vec();
@@ -449,5 +456,33 @@ mod tests {
         let kp = keypair(SignAlgorithm::SlhDsaShake128f).unwrap();
         let sig = sign_deterministic_dangerous(&kp.sk, b"delegate").unwrap();
         assert!(verify(&kp.vk, b"delegate", &sig).unwrap());
+    }
+
+    // ── Zeroization ─────────────────────────────────────────────────────────
+
+    fn zeroize_on_drop<T: ZeroizeOnDrop>() {}
+
+    /// Compile-time check: our signing key and every backend key the signing paths build
+    /// clear themselves on drop. Fails to build if the derive or a backend `zeroize` feature
+    /// is removed. falcon-rs keeps its private key in `Zeroizing` unconditionally.
+    /// tests/zeroize.rs checks the heap buffers themselves.
+    #[test]
+    fn secret_types_zeroize_on_drop() {
+        zeroize_on_drop::<SigningKey>();
+        zeroize_on_drop::<ml_dsa::SigningKey<ml_dsa::MlDsa44>>();
+        zeroize_on_drop::<ml_dsa::SigningKey<ml_dsa::MlDsa65>>();
+        zeroize_on_drop::<ml_dsa::SigningKey<ml_dsa::MlDsa87>>();
+        zeroize_on_drop::<ml_dsa::KeyPair<ml_dsa::MlDsa65>>();
+        zeroize_on_drop::<slh_dsa::SigningKey<slh_dsa::Shake128f>>();
+        zeroize_on_drop::<slh_dsa::SigningKey<slh_dsa::Shake256s>>();
+    }
+
+    #[test]
+    fn zeroize_clears_signing_key_bytes() {
+        let mut kp = keypair(SignAlgorithm::MlDsa65).unwrap();
+        assert_eq!(kp.sk.bytes.len(), 32);
+        kp.sk.zeroize();
+        assert!(kp.sk.bytes.is_empty());
+        assert_eq!(kp.sk.algorithm, SignAlgorithm::MlDsa65);
     }
 }

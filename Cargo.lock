@@ -625,6 +625,7 @@ dependencies = [
  "rand_core 0.10.1",
  "sha3",
  "subtle",
+ "zeroize",
 ]
 
 [[package]]

@@ -23,10 +23,12 @@ fn qrng_seeds_a_working_ml_dsa_keypair() {
 fn qrng_pipeline_is_deterministic_in_the_source_seed() {
     let gen = |seed: u64| {
         let mut rng = QrngRng::new(TestQuantumSource::seeded(seed)).unwrap();
+        // SigningKey clears itself on drop, so its bytes are cloned rather than moved out.
         sign::keypair_qrng(SignAlgorithm::MlDsa65, &mut rng)
             .unwrap()
             .sk
             .bytes
+            .clone()
     };
     // Same quantum seed → same conditioned key material → same keypair.
     assert_eq!(gen(42), gen(42), "same source seed must yield the same key");

@@ -22,9 +22,10 @@ exclude = ["vendor/slh-dsa-patch"]
 # The signature crates are optional so KEM-only consumers can build without
 # them (the ml-dsa rc needs the vendored fork to compile
 # against modern pkcs8/spki; KEM-only builds sidestep that entirely).
-ml-kem = { version = "=0.3.0-rc.0", features = ["getrandom"] }
-ml-dsa = { path = "vendor/ml-dsa-fork", features = ["rand_core"], optional = true }
-slh-dsa = { path = "vendor/slh-dsa-patch", optional = true }
+# `zeroize` makes the backends clear their own key structs on drop (falcon-rs always does).
+ml-kem = { version = "=0.3.0-rc.0", features = ["getrandom", "zeroize"] }
+ml-dsa = { path = "vendor/ml-dsa-fork", features = ["rand_core", "zeroize"], optional = true }
+slh-dsa = { path = "vendor/slh-dsa-patch", features = ["zeroize"], optional = true }
 falcon-rs = { version = "=0.2.3", optional = true }
 
 # Common dependencies
