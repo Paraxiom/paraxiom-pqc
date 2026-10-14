@@ -98,6 +98,9 @@ fn signing_keys_are_cleared_on_drop() {
         SignAlgorithm::SlhDsaShake128f,
         SignAlgorithm::Falcon512,
     ] {
+        if alg == SignAlgorithm::Falcon512 && !sign::FALCON_SIGNING_AVAILABLE {
+            continue; // no Falcon key generation on this target
+        }
         let sk = sign::keypair(alg).unwrap().sk;
         assert!(sk.bytes.iter().any(|b| *b != 0));
         let p = sk.bytes.as_ptr();

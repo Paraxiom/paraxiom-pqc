@@ -4,6 +4,11 @@
 //! caller) enable `falcon-verify` and get this module alone, without the
 //! ml-dsa / slh-dsa dependencies `sign` brings in. `sign::verify` uses the
 //! same function, so both paths accept exactly the same signatures.
+//!
+//! Verification uses integer arithmetic only (decoding, hashing to a point,
+//! NTT modulo q, a norm check), so it works on every target. Falcon key
+//! generation and signing use floating point on secret values and are built
+//! only where that runs in hardware; see `sign::FALCON_SIGNING_AVAILABLE`.
 
 use falcon::safe_api::{DomainSeparation, FnDsaSignature};
 

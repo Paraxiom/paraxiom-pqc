@@ -32,3 +32,18 @@ jobs:
       - name: Format check (informational)
         run: cargo fmt --all --check
         continue-on-error: true
+
+  falcon-guard:
+    name: Falcon guard on a target without hardware square root
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: riscv64gc-unknown-linux-gnu
+      - uses: Swatinem/rust-cache@v2
+      # riscv64gc has an FPU, but libm takes square roots in software there, so Falcon key
+      # generation and signing must not be built (sign::FALCON_SIGNING_AVAILABLE is false).
+      # This type-checks the refusing path in src/sign.rs and the tests that cover it.
+      - name: Check the refusing Falcon path (locked)
+        run: cargo check --locked --all-features --lib --tests --target riscv64gc-unknown-linux-gnu

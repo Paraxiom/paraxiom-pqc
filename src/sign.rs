@@ -324,32 +324,115 @@ fn slh_dsa_verify<P: slh_dsa::ParameterSet>(
 
 // ── Falcon (pending FIPS 206) ───────────────────────────────────────────────
 
-use falcon::safe_api::{DomainSeparation, FnDsaKeyPair};
+/// `true` when Falcon key generation and signing are built for this target.
+///
+/// falcon-rs 0.2.3 computes key generation and signing in native `f64` on secret values
+/// (`src/fpr.rs`) and takes square roots of secret values with `libm::sqrt`. All of it runs as
+/// hardware instructions on two families of targets only: x86 and x86_64 with SSE2, and AArch64
+/// with NEON. There the compiler emits FPU instructions for `f64`, and libm 0.2 uses the hardware
+/// square root. On any other target part of it runs in software: the compiler's soft-float
+/// routines where there is no FPU, and libm's table-based square root everywhere else. Those
+/// routines take a time that depends on their operands, which are secret here, and falcon-rs
+/// itself does not refuse such a target.
+///
+/// On those other targets this is `false`. The Falcon key generation and signing code is then not
+/// compiled, and [`keypair`], [`sign`], [`sign_randomized`] and [`sign_deterministic_dangerous`]
+/// return an error for Falcon. Verification uses integer arithmetic only and works on every
+/// target. A crate that needs Falcon signing can turn a wrong target into a build error:
+///
+/// ```
+/// const _: () = assert!(
+///     paraxiom_pqc::sign::FALCON_SIGNING_AVAILABLE,
+///     "Falcon signing needs x86/x86_64 with SSE2 or AArch64 with NEON"
+/// );
+/// ```
+///
+/// The guard only rules out software floating point. It does not show that Falcon signing is
+/// constant time where it is allowed: the only timing data is a mean-timing (dudect) run on
+/// Falcon-512 (`docs/SIDE-CHANNEL-AUDIT.md`), and on some x86 processors the division and
+/// square root instructions have operand-dependent latency.
+pub const FALCON_SIGNING_AVAILABLE: bool = falcon_secret::AVAILABLE;
+
+// Falcon key generation and signing. The condition is libm 0.2's own condition for using the
+// hardware square root, restricted to targets where `f64` arithmetic is hardware as well.
+#[cfg(any(
+    all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse2"),
+    all(target_arch = "aarch64", target_feature = "neon"),
+))]
+mod falcon_secret {
+    use super::{SignAlgorithm, SignKeypair, Signature, SigningKey, VerificationKey};
+    use crate::PqcError;
+    use falcon::safe_api::{DomainSeparation, FnDsaKeyPair};
+
+    pub(super) const AVAILABLE: bool = true;
+
+    pub(super) fn keygen(logn: u32, alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
+        let kp =
+            FnDsaKeyPair::generate(logn).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
+        Ok(SignKeypair {
+            sk: SigningKey {
+                algorithm: alg,
+                bytes: kp.private_key().to_vec(),
+            },
+            vk: VerificationKey {
+                algorithm: alg,
+                bytes: kp.public_key().to_vec(),
+            },
+        })
+    }
+
+    pub(super) fn sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
+        let kp = FnDsaKeyPair::from_private_key(&sk.bytes)
+            .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
+        let sig = kp
+            .sign(msg, &DomainSeparation::None)
+            .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
+        Ok(Signature {
+            algorithm: sk.algorithm,
+            bytes: sig.to_bytes().to_vec(),
+        })
+    }
+}
+
+// Every other target: no Falcon secret-key code is compiled, and both operations refuse.
+#[cfg(not(any(
+    all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse2"),
+    all(target_arch = "aarch64", target_feature = "neon"),
+)))]
+mod falcon_secret {
+    use super::{falcon_refusal, SignAlgorithm, SignKeypair, Signature, SigningKey};
+    use crate::PqcError;
+
+    pub(super) const AVAILABLE: bool = false;
+
+    pub(super) fn keygen(_logn: u32, _alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
+        Err(PqcError::KeyGen(falcon_refusal("key generation")))
+    }
+
+    pub(super) fn sign(_sk: &SigningKey, _msg: &[u8]) -> Result<Signature, PqcError> {
+        Err(PqcError::Sign(falcon_refusal("signing")))
+    }
+}
+
+/// Error text for Falcon key generation or signing on a target where they are not built.
+// Called by the refusing module, which exists only on such targets, and by the tests.
+#[allow(dead_code)]
+fn falcon_refusal(operation: &str) -> String {
+    format!(
+        "Falcon {operation} is not built for this target ({arch}): falcon-rs computes on secret \
+         values in floating point, and only x86/x86_64 with SSE2 and AArch64 with NEON run all \
+         of it in hardware. Use ML-DSA or SLH-DSA on this target; Falcon verification still \
+         works (see paraxiom_pqc::sign::FALCON_SIGNING_AVAILABLE)",
+        arch = std::env::consts::ARCH
+    )
+}
 
 fn falcon_keygen(logn: u32, alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
-    let kp = FnDsaKeyPair::generate(logn).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
-    Ok(SignKeypair {
-        sk: SigningKey {
-            algorithm: alg,
-            bytes: kp.private_key().to_vec(),
-        },
-        vk: VerificationKey {
-            algorithm: alg,
-            bytes: kp.public_key().to_vec(),
-        },
-    })
+    falcon_secret::keygen(logn, alg)
 }
 
 fn falcon_sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
-    let kp = FnDsaKeyPair::from_private_key(&sk.bytes)
-        .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
-    let sig = kp
-        .sign(msg, &DomainSeparation::None)
-        .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
-    Ok(Signature {
-        algorithm: sk.algorithm,
-        bytes: sig.to_bytes().to_vec(),
-    })
+    falcon_secret::sign(sk, msg)
 }
 
 fn falcon_verify(vk: &VerificationKey, msg: &[u8], sig: &Signature) -> Result<bool, PqcError> {
@@ -402,23 +485,96 @@ mod tests {
         let sig = sign(&kp.sk, b"original").unwrap();
         assert!(!verify(&kp.vk, b"tampered", &sig).unwrap());
     }
+    // The three Falcon round trips need key generation and signing, which exist only where
+    // FALCON_SIGNING_AVAILABLE holds; falcon_secret_key_operations_follow_the_guard covers the
+    // other targets.
     #[test]
     fn test_falcon512() {
+        if !FALCON_SIGNING_AVAILABLE {
+            return;
+        }
         let kp = keypair(SignAlgorithm::Falcon512).unwrap();
         let sig = sign(&kp.sk, b"Falcon-512").unwrap();
         assert!(verify(&kp.vk, b"Falcon-512", &sig).unwrap());
     }
     #[test]
     fn test_falcon1024() {
+        if !FALCON_SIGNING_AVAILABLE {
+            return;
+        }
         let kp = keypair(SignAlgorithm::Falcon1024).unwrap();
         let sig = sign(&kp.sk, b"Falcon-1024").unwrap();
         assert!(verify(&kp.vk, b"Falcon-1024", &sig).unwrap());
     }
     #[test]
     fn test_falcon_tampered() {
+        if !FALCON_SIGNING_AVAILABLE {
+            return;
+        }
         let kp = keypair(SignAlgorithm::Falcon512).unwrap();
         let sig = sign(&kp.sk, b"original").unwrap();
         assert!(!verify(&kp.vk, b"tampered", &sig).unwrap());
+    }
+
+    // ── Falcon target guard ─────────────────────────────────────────────────
+
+    /// The guard holds exactly on x86/x86_64 with SSE2 and on AArch64 with NEON. This restates
+    /// the condition independently of the cfg attributes on the two `falcon_secret` modules.
+    #[test]
+    fn falcon_signing_available_only_with_hardware_float() {
+        let expected = (cfg!(any(target_arch = "x86", target_arch = "x86_64"))
+            && cfg!(target_feature = "sse2"))
+            || (cfg!(target_arch = "aarch64") && cfg!(target_feature = "neon"));
+        assert_eq!(FALCON_SIGNING_AVAILABLE, expected);
+    }
+
+    /// Where the guard allows Falcon, key generation and signing work. Elsewhere every
+    /// secret-key entry point refuses with the guard's error, including a key made elsewhere.
+    /// Verification is covered on every target by tests/falcon_verify.rs.
+    #[test]
+    fn falcon_secret_key_operations_follow_the_guard() {
+        for (alg, sk_len) in [
+            (SignAlgorithm::Falcon512, 1281),
+            (SignAlgorithm::Falcon1024, 2305),
+        ] {
+            let generated = keypair(alg);
+            if FALCON_SIGNING_AVAILABLE {
+                let kp = generated.unwrap();
+                assert_eq!(kp.sk.bytes.len(), sk_len);
+                for sig in [
+                    sign(&kp.sk, b"guard").unwrap(),
+                    sign_randomized(&kp.sk, b"guard").unwrap(),
+                    sign_deterministic_dangerous(&kp.sk, b"guard").unwrap(),
+                ] {
+                    assert!(verify(&kp.vk, b"guard", &sig).unwrap());
+                }
+            } else {
+                let refused = |e: Option<PqcError>| {
+                    e.expect("Falcon must be refused on this target")
+                        .to_string()
+                        .contains("not built for this target")
+                };
+                assert!(refused(generated.err()));
+                let foreign = SigningKey {
+                    algorithm: alg,
+                    bytes: vec![0x50 | if sk_len == 1281 { 9 } else { 10 }; sk_len],
+                };
+                assert!(refused(sign(&foreign, b"guard").err()));
+                assert!(refused(sign_randomized(&foreign, b"guard").err()));
+                assert!(refused(sign_deterministic_dangerous(&foreign, b"guard").err()));
+            }
+        }
+    }
+
+    /// The refusal names the reason, the allowed targets and the way out.
+    #[test]
+    fn falcon_refusal_explains_itself() {
+        let text = falcon_refusal("signing");
+        assert!(text.starts_with("Falcon signing is not built for this target"));
+        assert!(text.contains(std::env::consts::ARCH));
+        assert!(text.contains("SSE2") && text.contains("NEON"));
+        assert!(text.contains("Use ML-DSA or SLH-DSA"));
+        assert!(text.contains("verification still works"));
     }
 
     // ── ML-DSA deterministic-mode fence (timing-audit follow-up, 2026-08-18) ─
