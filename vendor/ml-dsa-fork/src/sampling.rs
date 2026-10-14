@@ -266,10 +266,12 @@ mod sample_in_ball_guard {
     /// challenge polynomial, which silently makes our signatures unverifiable
     /// by every other ML-DSA implementation.
     ///
-    /// This repository carries no ACVP vectors, so nothing else would catch
-    /// that. This fingerprint stands in for them. If it changes, either the
-    /// draw pattern changed or the sampler is wrong, and the burden is on the
-    /// change to prove otherwise against real ACVP vectors.
+    /// This crate's own tests carry no ACVP vectors; the parent crate's
+    /// tests/acvp.rs runs NIST ACVP keyGen, sigGen and sigVer vectors through
+    /// this fork and would catch that too. This fingerprint is the fast check
+    /// inside the fork. If it changes, either the draw pattern changed or the
+    /// sampler is wrong, and the burden is on the change to prove otherwise
+    /// against the ACVP vectors.
     #[test]
     fn draw_pattern_is_unchanged() {
         const ZERO: Elem = Elem::new(0);

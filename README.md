@@ -111,7 +111,13 @@ combiner vectors (including cross-implementation vectors from pq-transport-gatew
 seeding, a fixed Falcon-512 verification vector, the Falcon target guard, and checks that secret
 buffers are zero when their memory is freed. The vendored ML-DSA fork has its own tests:
 `cargo test -p ml-dsa --all-features` (its pkcs8 test needs `RUST_MIN_STACK=16777216` in debug
-builds). This repository carries no NIST ACVP vectors.
+builds).
+
+`tests/acvp.rs` runs subsets of the NIST ACVP vectors for ML-KEM, ML-DSA and SLH-DSA
+(SHAKE-128f and SHAKE-256s): key generation, encapsulation, decapsulation including modified
+ciphertexts, the encapsulation-key check, deterministic and hedged signing (the fixed-round
+ML-DSA kernel included) and verification. `tests/acvp/README.md` gives the source commit, the
+selection rules and what each test checks. Falcon has no ACVP vectors yet.
 
 ## License
 

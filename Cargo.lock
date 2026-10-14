@@ -690,6 +690,7 @@ dependencies = [
  "ml-dsa",
  "ml-kem",
  "rand_core 0.10.1",
+ "serde_json",
  "sha3",
  "slh-dsa",
  "thiserror",

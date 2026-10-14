@@ -53,6 +53,10 @@ combiner = ["dep:sha3"]
 
 [dev-dependencies]
 criterion = "0.5"
+# tests/acvp.rs: reads the NIST ACVP vectors (JSON) and computes the ML-KEM implicit-rejection
+# key J(z || c) independently of ml-kem. Both are already in the dependency graph.
+serde_json = "1"
+sha3 = "0.11"
 
 [[bench]]
 name = "benchmarks"
