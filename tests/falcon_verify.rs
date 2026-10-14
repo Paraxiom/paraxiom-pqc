@@ -78,7 +78,11 @@ fn fixed_vector_verifies() {
 #[test]
 fn fixed_vector_rejects_changes() {
     let (pk, sig) = (unhex(PUBLIC_KEY), unhex(SIGNATURE));
-    assert!(!falcon::verify(&pk, b"paraxiom-pqc falcon verification vectoR", &sig));
+    assert!(!falcon::verify(
+        &pk,
+        b"paraxiom-pqc falcon verification vectoR",
+        &sig
+    ));
 
     let mut bad_sig = sig.clone();
     bad_sig[400] ^= 0x01;

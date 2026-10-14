@@ -44,7 +44,9 @@ static ALLOCATOR: WatchingAllocator = WatchingAllocator;
 
 /// Drops `value` and reports whether the heap buffer at `buffer` was all zero when freed.
 fn cleared_when_freed<T>(value: T, buffer: *const u8) -> bool {
-    let _one = ONE_WATCH.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _one = ONE_WATCH
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     VERDICT.store(0, Ordering::SeqCst);
     WATCHED.store(buffer as usize, Ordering::SeqCst);
     drop(value);
@@ -60,16 +62,26 @@ fn cleared_when_freed<T>(value: T, buffer: *const u8) -> bool {
 fn control_a_plain_vec_is_not_cleared() {
     let v = vec![0xA5u8; 64];
     let p = v.as_ptr();
-    assert!(!cleared_when_freed(v, p), "the harness must see data left in a plain Vec");
+    assert!(
+        !cleared_when_freed(v, p),
+        "the harness must see data left in a plain Vec"
+    );
 }
 
 #[test]
 fn decapsulation_key_is_cleared_on_drop() {
-    for alg in [KemAlgorithm::MlKem512, KemAlgorithm::MlKem768, KemAlgorithm::MlKem1024] {
+    for alg in [
+        KemAlgorithm::MlKem512,
+        KemAlgorithm::MlKem768,
+        KemAlgorithm::MlKem1024,
+    ] {
         let dk = kem::keypair(alg).unwrap().dk;
         assert!(dk.bytes.iter().any(|b| *b != 0));
         let p = dk.bytes.as_ptr();
-        assert!(cleared_when_freed(dk, p), "{alg:?} decapsulation key left data on the heap");
+        assert!(
+            cleared_when_freed(dk, p),
+            "{alg:?} decapsulation key left data on the heap"
+        );
     }
 }
 
@@ -81,9 +93,15 @@ fn shared_secrets_are_cleared_on_drop() {
     assert_eq!(ss_sender.bytes, ss_receiver.bytes);
 
     let p = ss_sender.bytes.as_ptr();
-    assert!(cleared_when_freed(ss_sender, p), "encapsulated secret left data on the heap");
+    assert!(
+        cleared_when_freed(ss_sender, p),
+        "encapsulated secret left data on the heap"
+    );
     let p = ss_receiver.bytes.as_ptr();
-    assert!(cleared_when_freed(ss_receiver, p), "decapsulated secret left data on the heap");
+    assert!(
+        cleared_when_freed(ss_receiver, p),
+        "decapsulated secret left data on the heap"
+    );
 }
 
 #[cfg(feature = "sign")]
@@ -104,6 +122,9 @@ fn signing_keys_are_cleared_on_drop() {
         let sk = sign::keypair(alg).unwrap().sk;
         assert!(sk.bytes.iter().any(|b| *b != 0));
         let p = sk.bytes.as_ptr();
-        assert!(cleared_when_freed(sk, p), "{alg:?} signing key left data on the heap");
+        assert!(
+            cleared_when_freed(sk, p),
+            "{alg:?} signing key left data on the heap"
+        );
     }
 }

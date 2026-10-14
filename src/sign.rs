@@ -136,10 +136,7 @@ pub fn sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
 /// Use it only when a protocol requires deterministic signatures and the signer cannot be timed
 /// by an adversary (no co-located processes, no remote timing, no physical access). Otherwise use
 /// [`sign`]. Other algorithms delegate to [`sign`].
-pub fn sign_deterministic_dangerous(
-    sk: &SigningKey,
-    msg: &[u8],
-) -> Result<Signature, PqcError> {
+pub fn sign_deterministic_dangerous(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
     match sk.algorithm {
         SignAlgorithm::MlDsa44 => ml_dsa_sign::<ml_dsa::MlDsa44>(sk, msg),
         SignAlgorithm::MlDsa65 => ml_dsa_sign::<ml_dsa::MlDsa65>(sk, msg),
@@ -370,7 +367,10 @@ pub const FALCON_SIGNING_AVAILABLE: bool = falcon_secret::AVAILABLE;
 // Falcon key generation and signing. The condition is libm 0.2's own condition for using the
 // hardware square root, restricted to targets where `f64` arithmetic is hardware as well.
 #[cfg(any(
-    all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse2"),
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "sse2"
+    ),
     all(target_arch = "aarch64", target_feature = "neon"),
 ))]
 mod falcon_secret {
@@ -381,8 +381,7 @@ mod falcon_secret {
     pub(super) const AVAILABLE: bool = true;
 
     pub(super) fn keygen(logn: u32, alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
-        let kp =
-            FnDsaKeyPair::generate(logn).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
+        let kp = FnDsaKeyPair::generate(logn).map_err(|e| PqcError::KeyGen(format!("{:?}", e)))?;
         Ok(SignKeypair {
             sk: SigningKey {
                 algorithm: alg,
@@ -410,7 +409,10 @@ mod falcon_secret {
 
 // Every other target: no Falcon secret-key code is compiled, and both operations refuse.
 #[cfg(not(any(
-    all(any(target_arch = "x86", target_arch = "x86_64"), target_feature = "sse2"),
+    all(
+        any(target_arch = "x86", target_arch = "x86_64"),
+        target_feature = "sse2"
+    ),
     all(target_arch = "aarch64", target_feature = "neon"),
 )))]
 mod falcon_secret {
@@ -575,7 +577,9 @@ mod tests {
                 };
                 assert!(refused(sign(&foreign, b"guard").err()));
                 assert!(refused(sign_randomized(&foreign, b"guard").err()));
-                assert!(refused(sign_deterministic_dangerous(&foreign, b"guard").err()));
+                assert!(refused(
+                    sign_deterministic_dangerous(&foreign, b"guard").err()
+                ));
             }
         }
     }
