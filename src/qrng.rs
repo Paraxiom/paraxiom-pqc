@@ -1,7 +1,14 @@
-//! Optional quantum-RNG entropy source — feature `qrng`, **default OFF**.
+//! Optional quantum RNG entropy source (feature `qrng`, off by default).
 //!
-//! Seeds post-quantum key generation from a pluggable *quantum* entropy source
-//! (real QKD/QRNG hardware in deployment; a deterministic test source for CI).
+//! Seeds post-quantum key generation from a pluggable *quantum* entropy source.
+//! The crate ships no source: callers implement [`QuantumSource`] over their QKD
+//! or QRNG hardware. The test suite uses a deterministic, non-cryptographic
+//! stand-in that lives in `tests/qrng_seeding.rs` and is not part of the library,
+//! so it cannot be picked up by mistake:
+//!
+//! ```compile_fail
+//! use paraxiom_pqc::qrng::TestQuantumSource; // removed from the library in 0.2.0
+//! ```
 //!
 //! ## Honesty & scope (read before quoting this anywhere)
 //! - This is **entropy-source assurance and defense-in-depth**, *not* a claim
@@ -25,9 +32,8 @@ use zeroize::Zeroize;
 const KEY_LEN: usize = 32;
 const RESEED_INTERVAL: usize = 1 << 20; // reseed after ~1 MiB of output
 
-/// A raw quantum entropy source. Implemented by QKD/QRNG hardware; see
-/// [`TestQuantumSource`] for a CI stand-in. Output is conditioned by
-/// [`QrngRng`] and never consumed raw.
+/// A raw quantum entropy source, implemented by the caller over QKD/QRNG
+/// hardware. Output is conditioned by [`QrngRng`] and never consumed raw.
 pub trait QuantumSource {
     /// Fill `dest` with raw quantum entropy. May fail (hardware / link down).
     fn fill_entropy(&mut self, dest: &mut [u8]) -> Result<(), PqcError>;
@@ -123,35 +129,3 @@ impl<S: QuantumSource> rand_core::TryRng for QrngRng<S> {
     }
 }
 impl<S: QuantumSource> rand_core::TryCryptoRng for QrngRng<S> {}
-
-/// **TEST ONLY** deterministic stand-in for a quantum source (seeded xorshift).
-/// NOT cryptographically secure — it exists so CI can exercise the conditioning
-/// pipeline reproducibly. Real deployments implement [`QuantumSource`] over QKD
-/// / QRNG hardware.
-pub struct TestQuantumSource {
-    state: u64,
-}
-
-impl TestQuantumSource {
-    pub fn seeded(seed: u64) -> Self {
-        Self {
-            state: seed | 1, // avoid the zero fixed point
-        }
-    }
-}
-
-impl QuantumSource for TestQuantumSource {
-    fn fill_entropy(&mut self, dest: &mut [u8]) -> Result<(), PqcError> {
-        for chunk in dest.chunks_mut(8) {
-            // xorshift64
-            let mut x = self.state;
-            x ^= x << 13;
-            x ^= x >> 7;
-            x ^= x << 17;
-            self.state = x;
-            let bytes = x.to_le_bytes();
-            chunk.copy_from_slice(&bytes[..chunk.len()]);
-        }
-        Ok(())
-    }
-}

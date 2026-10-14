@@ -1,10 +1,43 @@
 //! QRNG-seeded key generation (feature `qrng`). Proves the pipeline end-to-end:
 //! quantum entropy source → SHAKE256-conditioned CSPRNG → real ML-DSA keypair
 //! that signs and verifies.
-#![cfg(feature = "qrng")]
+#![cfg(all(feature = "qrng", feature = "sign"))]
 
-use paraxiom_pqc::qrng::{QrngRng, TestQuantumSource};
+use paraxiom_pqc::qrng::{QrngRng, QuantumSource};
 use paraxiom_pqc::sign::{self, SignAlgorithm};
+use paraxiom_pqc::PqcError;
+
+/// Deterministic stand-in for a quantum source (seeded xorshift64), for these tests only.
+/// It is not cryptographic and is deliberately kept out of the library so that no build can
+/// use it as an entropy source; it only lets the tests run the conditioning pipeline
+/// reproducibly.
+struct TestQuantumSource {
+    state: u64,
+}
+
+impl TestQuantumSource {
+    fn seeded(seed: u64) -> Self {
+        Self {
+            state: seed | 1, // avoid the zero fixed point
+        }
+    }
+}
+
+impl QuantumSource for TestQuantumSource {
+    fn fill_entropy(&mut self, dest: &mut [u8]) -> Result<(), PqcError> {
+        for chunk in dest.chunks_mut(8) {
+            // xorshift64
+            let mut x = self.state;
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            self.state = x;
+            let bytes = x.to_le_bytes();
+            chunk.copy_from_slice(&bytes[..chunk.len()]);
+        }
+        Ok(())
+    }
+}
 
 #[test]
 fn qrng_seeds_a_working_ml_dsa_keypair() {
