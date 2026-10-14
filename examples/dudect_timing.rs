@@ -11,10 +11,19 @@
 //! SLH-DSA (hash-based) is the constant-time control; Falcon-512 (floating-point
 //! Gaussian sampler) is the expected hot spot.
 //!
+//! The two ML-DSA rows measure the two signing paths that exist today:
+//! `sign_deterministic_dangerous` (the fixed-round kernel in src/dsa_ct.rs) and
+//! `sign` (hedged, upstream loop). Before 2026-10-14 the "deterministic" row
+//! called `sign`, which has been hedged since 2026-08-19, so it measured the
+//! hedged path twice and never the kernel.
+//!
 //!   cargo run --release --example dudect_timing [scale]
 
-use paraxiom_pqc::sign::{self, SignAlgorithm, SignKeypair};
+use paraxiom_pqc::sign::{self, SignAlgorithm, SignKeypair, Signature, SigningKey};
+use paraxiom_pqc::PqcError;
 use std::time::Instant;
+
+type Signer = fn(&SigningKey, &[u8]) -> Result<Signature, PqcError>;
 
 fn welch_t(a: &[f64], b: &[f64]) -> f64 {
     let (n1, n2) = (a.len() as f64, b.len() as f64);
@@ -56,15 +65,9 @@ fn max_t(fix: &[f64], rnd: &[f64]) -> f64 {
     best
 }
 
-fn measure(alg: SignAlgorithm, label: &str, n: usize, pool: usize, rnd: bool) {
+fn measure(alg: SignAlgorithm, label: &str, n: usize, pool: usize, signer: Signer) {
     let msg = [0x42u8; 32];
-    let do_sign = |k: &paraxiom_pqc::sign::SigningKey| {
-        if rnd {
-            sign::sign_randomized(k, &msg)
-        } else {
-            sign::sign(k, &msg)
-        }
-    };
+    let do_sign = |k: &SigningKey| signer(k, &msg);
     let fixed: SignKeypair = sign::keypair(alg).unwrap();
     let keys: Vec<SignKeypair> = (0..pool).map(|_| sign::keypair(alg).unwrap()).collect();
     for _ in 0..50 {
@@ -92,12 +95,12 @@ fn measure(alg: SignAlgorithm, label: &str, n: usize, pool: usize, rnd: bool) {
     let mf = tf.iter().sum::<f64>() / tf.len().max(1) as f64;
     let mr = tr.iter().sum::<f64>() / tr.len().max(1) as f64;
     let verdict = if t > 4.5 {
-        "LEAK — key-dependent timing"
+        "LEAK: key-dependent timing"
     } else {
         "no timing leak detected"
     };
     println!(
-        "{:<24} | n={:>6}/{:<6} | fix~{:>8.0}ns rnd~{:>8.0}ns | |t|={:>8.2} | {}",
+        "{:<44} | n={:>6}/{:<6} | fix~{:>8.0}ns rnd~{:>8.0}ns | |t|={:>8.2} | {}",
         label,
         tf.len(),
         tr.len(),
@@ -113,40 +116,45 @@ fn main() {
         .nth(1)
         .and_then(|s| s.parse().ok())
         .unwrap_or(1);
-    println!("# dudect timing-leakage — paraxiom-pqc sign (FIXED vs RANDOM key)");
+    println!("# dudect timing-leakage: paraxiom-pqc sign (FIXED vs RANDOM key)");
     println!(
         "# arch={}  scale={}  |t|>4.5 => measurable key-dependent timing (not constant-time)",
         std::env::consts::ARCH,
         scale
     );
     println!("{}", "-".repeat(96));
-    // (alg, label, base_n, pool) — n tuned to keep slow schemes bounded
+    // (alg, label, base_n, pool, signer); n is tuned to keep slow schemes bounded. The
+    // fixed-round kernel takes tens of milliseconds per signature, hence its smaller n.
     measure(
         SignAlgorithm::SlhDsaShake128f,
         "SLH-DSA-128f (control)",
         400 * scale,
         64,
-        false,
+        sign::sign,
     );
+    if sign::FALCON_SIGNING_AVAILABLE {
+        measure(
+            SignAlgorithm::Falcon512,
+            "Falcon-512",
+            20_000 * scale,
+            256,
+            sign::sign,
+        );
+    } else {
+        println!("Falcon-512: signing is not built for this target, skipped");
+    }
     measure(
-        SignAlgorithm::Falcon512,
-        "Falcon-512",
-        20_000 * scale,
+        SignAlgorithm::MlDsa44,
+        "ML-DSA-44 deterministic (fixed-round kernel)",
+        2_000 * scale,
         256,
-        false,
+        sign::sign_deterministic_dangerous,
     );
     measure(
         SignAlgorithm::MlDsa44,
-        "ML-DSA-44 DETERMINISTIC",
+        "ML-DSA-44 hedged (default sign)",
         20_000 * scale,
         256,
-        false,
-    );
-    measure(
-        SignAlgorithm::MlDsa44,
-        "ML-DSA-44 RANDOMIZED",
-        20_000 * scale,
-        256,
-        true,
+        sign::sign,
     );
 }
