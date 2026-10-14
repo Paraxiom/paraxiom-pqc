@@ -57,3 +57,8 @@ criterion = "0.5"
 [[bench]]
 name = "benchmarks"
 harness = false
+
+# Signing timing harness; needs the signature schemes.
+[[example]]
+name = "dudect_timing"
+required-features = ["sign"]
