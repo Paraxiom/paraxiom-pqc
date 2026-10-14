@@ -1,5 +1,21 @@
 # ML-DSA Fork: Visibility Changes for WP2 Constant-Time Signing
 
+## Status (2026-10-14): historical, superseded
+
+This note records the July 2026 plan. The tree no longer matches it:
+
+- The `SigningKey` fields are private again, as in upstream ml-dsa 0.1.0-rc.7. The
+  constant-time kernel is a method of `SigningKey` inside this fork
+  (`sign_deterministic_constant_time`), so `paraxiom-pqc` reads no field and no accessor
+  was added.
+- The `sampling.rs` and `hint.rs` changes described below are not in this tree:
+  `expand_a`, `expand_s`, `expand_mask`, `sample_in_ball` and `Hint` keep their upstream
+  `pub(crate)` visibility.
+
+The fork therefore exposes no internal item beyond upstream. Its remaining differences
+from upstream are the kernel, the SampleInBall regression tests, the zeroization fixes and
+two pkcs8 error-type build fixes.
+
 ## Summary
 
 Successfully created a local fork of `ml-dsa` v0.1.0-rc.7 with visibility adjustments to enable constant-time signing kernel implementation in `paraxiom-pqc`.

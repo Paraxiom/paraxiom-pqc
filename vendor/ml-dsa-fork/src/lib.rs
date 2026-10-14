@@ -265,30 +265,23 @@ impl<P: MlDsaParams> DigestSigner<Shake256, Signature<P>> for KeyPair<P> {
 }
 
 /// An ML-DSA signing key
+//
+// The fields are private, as in upstream ml-dsa. The constant-time signing kernel is a method
+// of this type, so nothing outside this crate needs them.
 #[derive(Clone, PartialEq)]
 pub struct SigningKey<P: MlDsaParams> {
-    /// Rho (32 bytes) - public seed for matrix A
-    pub rho: B32,
-    /// K (32 bytes) - private seed for s1, s2
-    pub K: B32,
-    /// tr (64 bytes) - transcript hash
-    pub tr: B64,
-    /// s1 - private vector
-    pub s1: Vector<P::L>,
-    /// s2 - private vector
-    pub s2: Vector<P::K>,
-    /// t0 - private vector
-    pub t0: Vector<P::K>,
+    rho: B32,
+    K: B32,
+    tr: B64,
+    s1: Vector<P::L>,
+    s2: Vector<P::K>,
+    t0: Vector<P::K>,
 
     // Derived values
-    /// s1_hat - NTT-transformed s1
-    pub s1_hat: NttVector<P::L>,
-    /// s2_hat - NTT-transformed s2
-    pub s2_hat: NttVector<P::K>,
-    /// t0_hat - NTT-transformed t0
-    pub t0_hat: NttVector<P::K>,
-    /// A_hat - Matrix A in NTT form
-    pub A_hat: NttMatrix<P::K, P::L>,
+    s1_hat: NttVector<P::L>,
+    s2_hat: NttVector<P::K>,
+    t0_hat: NttVector<P::K>,
+    A_hat: NttMatrix<P::K, P::L>,
 }
 
 impl<P: MlDsaParams> fmt::Debug for SigningKey<P> {
