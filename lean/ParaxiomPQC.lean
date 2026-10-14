@@ -4,20 +4,19 @@ import Mathlib.Order.BoundedOrder.Basic
 import Mathlib.Algebra.Group.Basic
 
 /-!
-# Paraxiom PQC — Formal Verification
+# paraxiom-pqc: a Lean model of the API
 
-Formal proofs for paraxiom-pqc: pure Rust post-quantum cryptography.
+Statements about a model of the paraxiom-pqc API: parameter, key and signature sizes, algorithm
+dispatch, and correctness, determinism and tamper-detection statements that hold by definition
+or take the scheme's correctness as a hypothesis.
 
-## Scope
+What this file does not do: it does not verify the Rust implementation, and it states no
+cryptographic security property (no indistinguishability, no unforgeability). The sizes are
+definitions written here by hand, so a theorem about a size checks this model, not the code.
+The zero-C theorem checks a hand-written list of dependency names; the dependency tree itself is
+checked with `cargo tree`.
 
-- **ML-KEM** (FIPS 203): KEM correctness, shared secret agreement, ciphertext indistinguishability
-- **ML-DSA** (FIPS 204): Signature correctness, unforgeability, deterministic binding
-- **SLH-DSA** (FIPS 205): Hash-based signature correctness, few-time security
-- **Falcon** (FIPS 206): Compact lattice signature correctness
-- **Hybrid KEM**: Composition security, secret independence
-- **General**: Key serialization roundtrip, algorithm dispatch correctness
-
-All proofs use `autoImplicit = false`. Zero sorries.
+All proofs use `autoImplicit = false`. No `sorry`.
 -/
 
 set_option autoImplicit false
@@ -77,12 +76,12 @@ def MlKemLevel.ekSize : MlKemLevel → Nat
   | .L768 => 1184
   | .L1024 => 1568
 
-/-- Decapsulation key is stored as 32-byte seed -/
-def MlKemLevel.dkSeedSize (_ : MlKemLevel) : Nat := 32
+/-- Decapsulation key is stored as the 64-byte FIPS 203 seed d || z -/
+def MlKemLevel.dkSeedSize (_ : MlKemLevel) : Nat := 64
 
-/-- Theorem 2: ML-KEM decapsulation key seed is always 32 bytes -/
+/-- Theorem 2: ML-KEM decapsulation key seed is always 64 bytes -/
 theorem mlkem_dk_seed_constant :
-    ∀ (l : MlKemLevel), l.dkSeedSize = 32 := by
+    ∀ (l : MlKemLevel), l.dkSeedSize = 64 := by
   intro l
   cases l <;> rfl
 
@@ -179,19 +178,6 @@ theorem deterministic_sign_consistent
     (sk : SK) (msg : Msg) :
     dss.sign sk msg = dss.sign sk msg := by
   rfl
--- ════════════════════════════════════════════════════════════════════════════
--- Section 3.11: ML-DSA Constant-Time Kernel Formal Verification
--- ════════════════════════════════════════════════════════════════════════════
-
-/-- 
-Formal verification of the ML-DSA constant-time kernel.
-This property ensures the branchless kernel maintains the same output 
-distribution as the standard signing routine.
--/
-theorem mldsa_constant_time_kernel_correct (sk : SK) (msg : Msg) :
-    let sig := sign_constant_time sk msg
-    dss_mldsa.verify vk msg sig = true := by
-  sorry -- Integration point: Replace with actual proof of bitwise masked correctness
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- Section 4: SLH-DSA (FIPS 205) Properties
