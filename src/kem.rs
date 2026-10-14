@@ -1,6 +1,8 @@
-//! Key Encapsulation Mechanisms — ML-KEM (FIPS 203)
+//! Key encapsulation: ML-KEM (FIPS 203).
 //!
 //! Pure Rust. Zero C.
+//!
+//! Decapsulation keys and shared secrets are cleared from memory when dropped.
 
 use crate::PqcError;
 use zeroize::{Zeroize, ZeroizeOnDrop};
@@ -20,7 +22,10 @@ pub struct EncapsulationKey {
     pub bytes: Vec<u8>,
 }
 
-/// Decapsulation key (secret — stored as 32-byte seed)
+/// Decapsulation key (secret).
+///
+/// `bytes` is the 64-byte FIPS 203 seed `d || z` from which ML-KEM.KeyGen_internal rebuilds the
+/// key, for all three parameter sets. It is not the expanded decapsulation key encoding.
 ///
 /// `bytes` is cleared when the key is dropped. Because of that `Drop` impl, `bytes` cannot be
 /// moved out of the key; borrow it, clone it, or take it with `std::mem::take(&mut dk.bytes)`.
@@ -152,7 +157,7 @@ pub fn decapsulate(dk: &DecapsulationKey, ct: &Ciphertext) -> Result<SharedSecre
         .bytes
         .as_slice()
         .try_into()
-        .map_err(|_| PqcError::Decapsulate("invalid seed size (expected 32 bytes)".into()))?;
+        .map_err(|_| PqcError::Decapsulate("invalid seed size (expected 64 bytes)".into()))?;
 
     let mut ss: ml_kem::SharedKey = match dk.algorithm {
         KemAlgorithm::MlKem512 => {
@@ -203,6 +208,27 @@ mod tests {
         let (ct, ss_enc) = encapsulate(&kp.ek).unwrap();
         let ss_dec = decapsulate(&kp.dk, &ct).unwrap();
         assert_eq!(ss_enc.bytes, ss_dec.bytes);
+    }
+
+    /// The decapsulation key is the 64-byte seed d || z for every parameter set, and a key of
+    /// another length is refused with an error that says so.
+    #[test]
+    fn decapsulation_key_is_the_64_byte_seed() {
+        for alg in [
+            KemAlgorithm::MlKem512,
+            KemAlgorithm::MlKem768,
+            KemAlgorithm::MlKem1024,
+        ] {
+            let kp = keypair(alg).unwrap();
+            assert_eq!(kp.dk.bytes.len(), 64, "{alg:?}");
+            let (ct, _) = encapsulate(&kp.ek).unwrap();
+            let short = DecapsulationKey {
+                algorithm: alg,
+                bytes: kp.dk.bytes[..32].to_vec(),
+            };
+            let err = decapsulate(&short, &ct).err().unwrap().to_string();
+            assert!(err.contains("expected 64 bytes"), "{err}");
+        }
     }
 
     fn zeroize_on_drop<T: ZeroizeOnDrop>() {}
