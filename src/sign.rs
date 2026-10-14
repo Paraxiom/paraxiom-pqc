@@ -253,7 +253,6 @@ fn ml_dsa_verify<P: ml_dsa::MlDsaParams>(
 ) -> Result<bool, PqcError> {
     // Reconstruct VK from encoded bytes
     let vk_bytes: &[u8] = &vk.bytes;
-    let _signing_seed_dummy = random_seed().map_err(|e| PqcError::Verify(format!("{:?}", e)))?;
     // Use verify_internal which takes raw signature bytes
     let enc_sig = ml_dsa::EncodedSignature::<P>::try_from(sig.bytes.as_slice())
         .map_err(|_| PqcError::Verify("invalid signature size".into()))?;
