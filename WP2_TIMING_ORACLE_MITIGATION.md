@@ -1,124 +1,71 @@
-# WP2 — Constant-Time ML-DSA Signing: Timing-Oracle Mitigation
+# WP2: fixed-round ML-DSA signing kernel
 
-## Summary
+Status as of 2026-10-14. This file replaces an earlier description that claimed more than the
+code does. The corrections are listed at the end.
 
-This document summarizes the constant-time signing hardening (WP2) applied to
-the ML-DSA implementation used by `paraxiom-pqc`. The objective is to eliminate
-the timing side-channel inherent in standard FIPS 204 rejection sampling so that
-signing latency no longer depends on the secret key or the message. The
-mitigation preserves **bit-identical FIPS 204 output**: a signature produced by
-the constant-time kernel verifies with any compliant FIPS 204 verifier.
+## What it is
 
-**Implementation locations**
+`SigningKey::sign_deterministic_constant_time` in `vendor/ml-dsa-fork/src/lib.rs` (core loop:
+`raw_sign_mu_constant_time`), called through `sign_constant_time` in `src/dsa_ct.rs`.
 
-- Kernel (vendored fork): `vendor/ml-dsa-fork/src/lib.rs` —
-  `SigningKey::sign_deterministic_constant_time` (public entry) and
-  `raw_sign_mu_constant_time` (core sampler).
-- `paraxiom-pqc` entry point: `src/dsa_ct.rs` — `sign_constant_time`, which
-  drives the fork kernel.
-
-## Threat Model
-
-ML-DSA signing (FIPS 204 §3.4, "Key Generation and Signing") is probabilistic.
-For each attempt the sampler draws a mask vector `y`, computes the intermediate
-`w = A·y`, and checks whether the low-order parts of `w` and the hint `h` remain
-within the FIPS 204 bounds:
+ML-DSA signing (FIPS 204, Algorithm 7) repeats a loop until a candidate passes four checks:
 
 - `‖z‖∞ < γ₁ − β`
 - `‖r₀‖∞ < γ₂ − β`
-- `‖c·t₀‖∞ < q − 1`
-- `wt(h) ≤ ω`
+- `‖c·t₀‖∞ < γ₂`
+- the hint `h` has at most ω ones
 
-If any bound is violated the candidate is **rejected** and the sampler iterates
-again with a fresh `y`.
+Upstream ml-dsa stops at the first candidate that passes, so the number of rounds, and with it
+the signing time, depends on the key and the message. With deterministic signing a given key and
+message always take the same number of rounds, which makes the signing time a stable property of
+the key.
 
-In a naive implementation the sampling loop terminates as soon as a valid
-candidate is found. The number of iterations is therefore a function of the
-secret key (`ρ`, `s₁`, `s₂`, `t₀`) and the message: keys or messages that
-require more rejections take measurably longer to sign. An attacker able to
-measure signing time — a local or remote timing oracle — learns a
-non-negligible amount of information about the secret key. This is a classic
-timing side-channel: even though the per-candidate rejection probability is
-small, the *distribution* of iteration counts is key-dependent and must be
-treated as leaked.
+The kernel always runs 256 rounds and keeps the first candidate that passes. It uses the same
+`rho''`, the same `kappa` sequence and the same checks as deterministic ML-DSA.Sign, so it returns
+the same signature; `kernel_matches_deterministic_sign` in `src/dsa_ct.rs` compares the two for
+all three parameter sets. Signatures verify with any FIPS 204 verifier.
 
-## Mitigation Strategy
+## Where it runs
 
-The side-channel is removed by making the per-signing workload **fixed and
-independent of the secret material**. The rejection sampler is wrapped in a loop
-with a **constant iteration count of `MAX_ROUNDS = 256`**. Every iteration
-unconditionally generates a candidate `(y, w, z, h)` and evaluates all bound
-checks; the loop never `break`s or `return`s early on a secret-dependent
-condition, and it always executes all 256 rounds.
+Only in `sign::sign_deterministic_dangerous`. Since 2026-08-19, `sign::sign` (and
+`sign_randomized`) sign ML-DSA in hedged mode through upstream's variable-length loop.
 
-The value 256 is not arbitrary: it is the statistical bound used throughout the
-FIPS 204 reference implementation, chosen so that the probability of requiring
-more than 256 attempts is below 2⁻¹²⁸. Fixing the count at this bound means the
-constant-time path performs at least as much work as the variable-time path
-would in the worst case, while exposing no timing variation. Acceptedness is
-still enforced (invalid candidates are simply never selected), so correctness
-and FIPS 204 compliance are unchanged.
+## What is not established
 
-## Constant-Time Verification
+- **Timing.** The kernel has never been timing-measured. The figures in
+  `docs/SIDE-CHANNEL-AUDIT.md` were committed on 2026-07-10, two days before the kernel
+  (2026-07-12), and describe upstream's loops. Their per-key signing times (319 µs to 1,536 µs)
+  are also far below what the kernel costs: it runs 256 rounds where upstream runs 3.85 to 5.1
+  on average, 50 to 66 times as many. `examples/dudect_timing.rs` measures the kernel since
+  2026-10-14; no result has been recorded yet.
+- **Constant time.** The kernel removes the round count from the running time but is not a
+  complete constant-time implementation. The round that accepts takes a branch that the others
+  skip: `if should_select_mask != 0 { ... }` reduces `z` and stores the signature. The validity
+  flags come from ordinary comparisons and `&&`, which the compiler may or may not turn into
+  branch-free code, and nothing checks the machine code.
+- **FIPS 204 loop limit.** FIPS 204 Appendix C (Table 3) says that an implementation that bounds
+  this loop shall not use a limit below 814 iterations, which keeps the failure probability at
+  about 2^-256 or less. 256 is below that minimum.
 
-Within the fixed loop, the acceptance decision uses **bitwise masking and
-cumulative ORing** instead of control flow, so there is no branch whose outcome
-depends on secret data.
+## Failure probability at 256 rounds
 
-1. **Validity flags as masks.** Each bound check produces a scalar mask
-   (`1` if satisfied, `0` otherwise): `z_valid`, `r0_valid`, `ct0_valid`,
-   `h_valid`. These are combined into `candidate_valid_mask`.
-2. **Cumulative selection flag.** A candidate is selected only if it is valid
-   *and* no valid candidate has already been chosen:
-   ```rust
-   let candidate_valid_mask = zr0_mask & ct0h_mask;
-   let should_select_mask   = candidate_valid_mask & (1u32 - found_valid);
-   ```
-   `found_valid` is a cumulative flag: once a valid signature is found it is set
-   and held for the remaining iterations (conceptually
-   `found_valid |= should_select_mask`), so `1u32 - found_valid` becomes `0` and
-   no later candidate can overwrite the choice.
-3. **Branchless state preservation.** The selected signature is written only
-   when `should_select_mask != 0`; because `found_valid` already prevents
-   re-selection, this store happens on at most one iteration and the flag is
-   updated with a bitwise OR rather than a secret-dependent branch. Candidate
-   generation and bound evaluation run identically on every one of the 256
-   rounds, so the observable execution profile (instruction mix, memory-access
-   pattern, total duration) is data-independent with respect to the secret key
-   and message.
+If one round accepts with probability 1/E, where E is the expected number of rounds, all 256
+rounds reject with probability (1 − 1/E)^256. FIPS 204 Table 1 gives E for each parameter set:
 
-The only remaining conditional (`if should_select_mask != 0`) guards a store
-that executes on exactly one iteration (the winning one) and on none of the
-others; it does not introduce a key-dependent timing variation because the
-expensive, secret-dependent work precedes it uniformly on all iterations.
+| Parameter set | E    | (1 − 1/E)^256  |
+|---------------|------|----------------|
+| ML-DSA-44     | 4.25 | about 2^-99.1  |
+| ML-DSA-65     | 5.1  | about 2^-80.6  |
+| ML-DSA-87     | 3.85 | about 2^-111.1 |
 
-## FIPS 204 Integrity
+When that happens the kernel returns an error; it does not panic.
 
-The constant-time kernel is **cryptographically identical** to the NIST
-specification. It does not modify the algorithm, the encoding, or the signature
-format:
+## Corrections to the earlier version of this file
 
-- **Algebraic primitives unchanged.** The sampler reuses the fork's existing,
-  already-constant-time field arithmetic — `expand_mask`, `sample_in_ball`, the
-  NTT / inverse-NTT transforms, `high_bits` / `low_bits`, `mod_plus_minus`, and
-  `Hint` construction. No polynomial arithmetic is altered.
-- **Signature encoding unchanged.** Output is the standard FIPS 204 triple
-  `(c_tilde, z, h)` with the same byte layout as the reference implementation.
-- **Verification unchanged.** Signatures produced by the constant-time kernel
-  verify with any compliant FIPS 204 verifier, including the fork's own
-  `VerifyingKey::verify_with_context` and external validators.
-
-The *only* behavioral difference versus the reference implementation is timing:
-signing time is now constant rather than proportional to the rejection count.
-
-## Testing and Verification
-
-- Unit tests in `src/dsa_ct.rs` (`ml_dsa_44_constant_time_verifies`,
-  `ml_dsa_65_constant_time_verifies`, `ml_dsa_87_constant_time_verifies`) sign
-  with the kernel and assert that the resulting signature verifies, while a
-  tampered message and a wrong context are both rejected.
-- **Stack note:** during testing the kernel overflowed the default (~8 MiB)
-  thread stack while expanding the key and generating 256 candidates. Run tests
-  and production callers with a larger stack, e.g. `RUST_MIN_STACK=64MB`, or
-  size the calling thread's stack accordingly. This is a stack-depth
-  requirement, not a constant-time concern.
+- 256 is not "the statistical bound used throughout the FIPS 204 reference implementation". The
+  only bound in FIPS 204 is a minimum of 814 iterations.
+- The failure probability is about 2^-81 to 2^-111, not "below 2^-128".
+- Acceptance is not branchless, and "signing time is now constant" was never measured.
+- The third check is `‖c·t₀‖∞ < γ₂`, not `< q − 1`.
+- The stack warning (overflow at 8 MiB, `RUST_MIN_STACK=64MB`) does not hold for the current
+  code: the kernel tests pass on the default 2 MiB test-thread stack in debug builds.

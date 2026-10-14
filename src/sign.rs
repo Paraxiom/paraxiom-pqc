@@ -1,6 +1,11 @@
-//! Digital Signatures — ML-DSA (FIPS 204), SLH-DSA (FIPS 205), Falcon (FIPS 206)
+//! Digital signatures: ML-DSA (FIPS 204), SLH-DSA (FIPS 205) and Falcon (FIPS 206, still a
+//! draft).
 //!
 //! Pure Rust. Zero C.
+//!
+//! Signing keys are cleared from memory when dropped. Falcon key generation and signing are
+//! built only on targets where they run on hardware floating point; see
+//! [`FALCON_SIGNING_AVAILABLE`].
 
 use crate::PqcError;
 use zeroize::{Zeroize, ZeroizeOnDrop, Zeroizing};
@@ -85,17 +90,22 @@ pub fn keypair_qrng<S: crate::qrng::QuantumSource>(
     }
 }
 
-/// Sign a message. **ML-DSA signs in FIPS 204 hedged (randomized) mode by
-/// default** as of 2026-08-18: our cross-architecture timing audit
-/// (`examples/dudect_timing.rs`, Welch's t-test, N ≈ 10⁴) measured
-/// deterministic ML-DSA's rejection-sampling loop leaking a key-dependent
-/// timing fingerprint at |t| ≈ 112–255 (threshold 4.5) with a 4.8× spread in
-/// signing time, on both x86_64 and ARM Cortex-A53. Hedged mode measured
-/// clean on ARM (|t| = 1.50). Verification is unaffected — hedged signatures
-/// are standard FIPS 204 signatures.
+/// Sign a message.
 ///
-/// If a protocol strictly requires deterministic signatures, use
-/// [`sign_deterministic_dangerous`] and read its warning.
+/// ML-DSA signs in the hedged (randomized) mode of FIPS 204, through upstream ml-dsa's
+/// variable-length rejection loop, with fresh OS randomness for every signature. Hedged signatures
+/// are standard FIPS 204 signatures. This has been the default since 2026-08-19, after the timing
+/// measurements in `docs/SIDE-CHANNEL-AUDIT.md` (dudect, Welch's t-test, about 10^4 samples per
+/// class, threshold |t| 4.5): upstream's deterministic loop gave each key its own signing time
+/// (|t| 112.8 on x86-64 and 98.7 on a Cortex-A53), while hedged signing measured |t| 4.4 and 1.5.
+/// That is below the threshold, not proof of constant time: |t| 4.4 is close to it, and the
+/// expected number of rounds still depends on the key.
+///
+/// SLH-DSA signs deterministically. Falcon is randomized by construction, and is built only on
+/// some targets: see [`FALCON_SIGNING_AVAILABLE`].
+///
+/// If a protocol requires deterministic ML-DSA signatures, use [`sign_deterministic_dangerous`]
+/// and read its warning first.
 pub fn sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
     match sk.algorithm {
         SignAlgorithm::MlDsa44 => ml_dsa_sign_randomized::<ml_dsa::MlDsa44>(sk, msg),
@@ -107,19 +117,24 @@ pub fn sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
     }
 }
 
-/// ⚠️ Deterministic ML-DSA signing — **known timing side channel**.
+/// Deterministic ML-DSA signing. Read this before using it.
 ///
-/// Our timing audit measured this mode leaking a key-dependent rejection-
-/// sampling fingerprint at |t| ≈ 112–255 (pass threshold: 4.5) with signing
-/// time spreading 4.8× (≈319 µs to ≈1,536 µs) as a function of the secret
-/// key, on both x86_64 and ARM Cortex-A53. Reproduce it yourself:
-/// `cargo run --release --example dudect_timing`.
+/// For ML-DSA this runs the fixed-round kernel (`src/dsa_ct.rs`, implemented in the vendored
+/// ml-dsa fork): 256 rounds of the signing loop every time, keeping the first candidate that
+/// passes the checks. The result is the standard deterministic FIPS 204 signature. Its limits:
 ///
-/// Use this ONLY when a protocol strictly requires deterministic signatures
-/// AND the signing environment is not observable by an adversary (no
-/// co-located processes, no remote timing measurement, no physical access).
-/// For every other case, use [`sign`], which is hedged for ML-DSA.
-/// Non-ML-DSA algorithms are unaffected and delegate to [`sign`].
+/// - Its timing has never been measured. The deterministic leak quoted under [`sign`] was
+///   measured on upstream's variable-length loop before this kernel existed (2026-07-12). No
+///   published figure describes the kernel. `cargo run --release --example dudect_timing`
+///   measures it.
+/// - It is not fully constant time: the round that accepts takes a branch the other rounds skip.
+/// - 256 rounds is below the 814-iteration minimum of FIPS 204 Appendix C. With probability about
+///   2^-99, 2^-81 and 2^-111 (ML-DSA-44, -65, -87) every round rejects and this returns an error.
+/// - It is roughly 25 to 50 times slower than [`sign`].
+///
+/// Use it only when a protocol requires deterministic signatures and the signer cannot be timed
+/// by an adversary (no co-located processes, no remote timing, no physical access). Otherwise use
+/// [`sign`]. Other algorithms delegate to [`sign`].
 pub fn sign_deterministic_dangerous(
     sk: &SigningKey,
     msg: &[u8],
@@ -132,11 +147,9 @@ pub fn sign_deterministic_dangerous(
     }
 }
 
-/// Randomized (hedged) signing. Since 2026-08-18 this is what [`sign`]
-/// already does for ML-DSA (hedged became the default after the timing
-/// audit); this function is kept for API compatibility and explicitness.
-/// Falcon is inherently randomized and SLH-DSA-*f is timing-flat, so those
-/// fall back to `sign`.
+/// Hedged (randomized) signing. For ML-DSA this is what [`sign`] has done since 2026-08-19; the
+/// function stays for compatibility and to make the choice explicit. Other algorithms delegate
+/// to [`sign`].
 pub fn sign_randomized(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
     match sk.algorithm {
         SignAlgorithm::MlDsa44 => ml_dsa_sign_randomized::<ml_dsa::MlDsa44>(sk, msg),
@@ -577,7 +590,7 @@ mod tests {
         assert!(text.contains("verification still works"));
     }
 
-    // ── ML-DSA deterministic-mode fence (timing-audit follow-up, 2026-08-18) ─
+    // ── ML-DSA deterministic-mode fence (after the timing measurements, 2026-08-19) ─
 
     /// The default `sign` MUST be hedged for ML-DSA: two signatures over the
     /// same (key, msg) differ (fresh per-signature randomness), and both verify.
@@ -594,8 +607,8 @@ mod tests {
         assert!(verify(&kp.vk, b"audit msg", &s2).unwrap());
     }
 
-    /// The fenced deterministic path still works and is byte-stable — for the
-    /// rare protocol that genuinely requires it (and accepts the timing leak).
+    /// The fenced deterministic path still works and is byte-stable, for the
+    /// rare protocol that requires it (and accepts the limits in its docs).
     #[test]
     fn ml_dsa_deterministic_dangerous_is_stable_and_valid() {
         let kp = keypair(SignAlgorithm::MlDsa44).unwrap();

@@ -509,17 +509,25 @@ impl<P: MlDsaParams> SigningKey<P> {
         Ok(self.sign_mu_deterministic(&mu))
     }
 
-    /// Constant-time deterministic signing with fixed-iteration rejection sampling.
+    /// Deterministic signing with a fixed number of rejection-sampling rounds.
     ///
-    /// This method implements ML-DSA signing with a fixed number of rejection sampling iterations
-    /// to mitigate timing side-channels. The loop always executes exactly `MAX_ROUNDS` times,
-    /// and acceptance criteria are evaluated using bitwise masking rather than data-dependent
-    /// conditionals.
+    /// Runs exactly 256 rounds of the FIPS 204 signing loop, whatever the key and message, and
+    /// returns the first candidate that passes all four bound checks. That is the signature that
+    /// deterministic ML-DSA.Sign ([`SigningKey::sign_deterministic`]) returns: same `rho''`, same
+    /// `kappa` sequence, same checks.
     ///
-    /// # Panics
+    /// 256 is below 814, the lowest loop limit FIPS 204 allows (Appendix C, Table 3). With the
+    /// expected repetition counts of FIPS 204 Table 1, every round rejects with probability about
+    /// 2^-99 (ML-DSA-44), 2^-81 (ML-DSA-65) and 2^-111 (ML-DSA-87).
     ///
-    /// This method panics if `MAX_ROUNDS` iterations are exhausted without finding a valid
-    /// signature. In practice, this is astronomically unlikely (probability < 2^-128).
+    /// The fixed count keeps the number of rounds out of the running time. This is not a complete
+    /// constant-time implementation and it has not been timing-measured: the accepting round
+    /// takes a branch that the other rounds skip (it reduces `z` and stores the signature), and
+    /// the bound checks are ordinary comparisons whose machine code is up to the compiler.
+    ///
+    /// # Errors
+    ///
+    /// Returns an error if `ctx` is longer than 255 bytes, or if all 256 rounds reject.
     pub fn sign_deterministic_constant_time(
         &self,
         M: &[u8],
@@ -588,6 +596,7 @@ impl<P: MlDsaParams> SigningKey<P> {
             let candidate_valid_mask = zr0_mask & ct0h_mask;
             let should_select_mask = candidate_valid_mask & ((1u32 - found_valid) as u32);
 
+            // Taken by the accepting round only: a branch on the accept decision.
             if should_select_mask != 0 {
                 let z = z.mod_plus_minus::<SpecQ>();
                 selected_signature = Some(Signature { c_tilde, z, h });
