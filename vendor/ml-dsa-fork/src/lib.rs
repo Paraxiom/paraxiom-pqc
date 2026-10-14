@@ -511,14 +511,14 @@ impl<P: MlDsaParams> SigningKey<P> {
 
     /// Deterministic signing with a fixed number of rejection-sampling rounds.
     ///
-    /// Runs exactly 256 rounds of the FIPS 204 signing loop, whatever the key and message, and
+    /// Runs exactly 814 rounds of the FIPS 204 signing loop, whatever the key and message, and
     /// returns the first candidate that passes all four bound checks. That is the signature that
     /// deterministic ML-DSA.Sign ([`SigningKey::sign_deterministic`]) returns: same `rho''`, same
     /// `kappa` sequence, same checks.
     ///
-    /// 256 is below 814, the lowest loop limit FIPS 204 allows (Appendix C, Table 3). With the
-    /// expected repetition counts of FIPS 204 Table 1, every round rejects with probability about
-    /// 2^-99 (ML-DSA-44), 2^-81 (ML-DSA-65) and 2^-111 (ML-DSA-87).
+    /// 814 is the lowest loop limit FIPS 204 allows (Appendix C, Table 3). With the expected
+    /// repetition counts of FIPS 204 Table 1, every round rejects with probability about 2^-315
+    /// (ML-DSA-44), 2^-256 (ML-DSA-65) and 2^-353 (ML-DSA-87).
     ///
     /// The fixed count keeps the number of rounds out of the running time. This is not a complete
     /// constant-time implementation and it has not been timing-measured: the accepting round
@@ -527,7 +527,7 @@ impl<P: MlDsaParams> SigningKey<P> {
     ///
     /// # Errors
     ///
-    /// Returns an error if `ctx` is longer than 255 bytes, or if all 256 rounds reject.
+    /// Returns an error if `ctx` is longer than 255 bytes, or if all 814 rounds reject.
     pub fn sign_deterministic_constant_time(
         &self,
         M: &[u8],
@@ -550,7 +550,11 @@ impl<P: MlDsaParams> SigningKey<P> {
     }
 
     fn raw_sign_mu_constant_time(&self, mu: &B64) -> Option<Signature<P>> {
-        const MAX_ROUNDS: usize = 256;
+        // FIPS 204 Appendix C: an implementation that bounds the ML-DSA.Sign_internal loop shall
+        // not use a limit below 814 iterations (Table 3). This loop always runs exactly that many.
+        // It used to stop at 256, below that minimum, where every round rejects with probability
+        // about 2^-99, 2^-81 and 2^-111 for ML-DSA-44, -65 and -87.
+        const ROUNDS: u16 = 814;
         let rnd = B32::default();
         let rhopp: B64 = H::default()
             .absorb(&self.K)
@@ -561,8 +565,10 @@ impl<P: MlDsaParams> SigningKey<P> {
         let mut selected_signature: Option<Signature<P>> = None;
         let mut found_valid: u32 = 0;
 
-        for round in 0..MAX_ROUNDS {
-            let y = expand_mask::<P::L, P::Gamma1>(&rhopp, (round * P::L::USIZE) as u16);
+        for round in 0..ROUNDS {
+            // kappa = round * l, as in FIPS 204 Algorithm 7; at most 813 * 7 = 5691.
+            let kappa = round * P::L::U16;
+            let y = expand_mask::<P::L, P::Gamma1>(&rhopp, kappa);
             let w = (&self.A_hat * &y.ntt()).ntt_inverse();
             let w1 = w.high_bits::<P::TwoGamma2>();
 
@@ -582,7 +588,7 @@ impl<P: MlDsaParams> SigningKey<P> {
 
             let z_valid = z.infinity_norm() < P::GAMMA1_MINUS_BETA;
             let r0_valid = r0.infinity_norm() < P::GAMMA2_MINUS_BETA;
-            let zr0_mask = if z_valid && r0_valid { 1u32 } else { 0u32 };
+            let zr0_mask = u32::from(z_valid && r0_valid);
 
             let ct0 = (&c_hat * &self.t0_hat).ntt_inverse();
             let minus_ct0 = -&ct0;
@@ -591,10 +597,10 @@ impl<P: MlDsaParams> SigningKey<P> {
 
             let ct0_valid = ct0.infinity_norm() < P::Gamma2::U32;
             let h_valid = h.hamming_weight() <= P::Omega::USIZE;
-            let ct0h_mask = if ct0_valid && h_valid { 1u32 } else { 0u32 };
+            let ct0h_mask = u32::from(ct0_valid && h_valid);
 
             let candidate_valid_mask = zr0_mask & ct0h_mask;
-            let should_select_mask = candidate_valid_mask & ((1u32 - found_valid) as u32);
+            let should_select_mask = candidate_valid_mask & (1u32 - found_valid);
 
             // Taken by the accepting round only: a branch on the accept decision.
             if should_select_mask != 0 {

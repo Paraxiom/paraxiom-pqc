@@ -120,17 +120,18 @@ pub fn sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
 /// Deterministic ML-DSA signing. Read this before using it.
 ///
 /// For ML-DSA this runs the fixed-round kernel (`src/dsa_ct.rs`, implemented in the vendored
-/// ml-dsa fork): 256 rounds of the signing loop every time, keeping the first candidate that
-/// passes the checks. The result is the standard deterministic FIPS 204 signature. Its limits:
+/// ml-dsa fork): 814 rounds of the signing loop every time, the lowest loop limit FIPS 204
+/// allows, keeping the first candidate that passes the checks. The result is the standard
+/// deterministic FIPS 204 signature. Its limits:
 ///
 /// - Its timing has never been measured. The deterministic leak quoted under [`sign`] was
 ///   measured on upstream's variable-length loop before this kernel existed (2026-07-12). No
 ///   published figure describes the kernel. `cargo run --release --example dudect_timing`
 ///   measures it.
 /// - It is not fully constant time: the round that accepts takes a branch the other rounds skip.
-/// - 256 rounds is below the 814-iteration minimum of FIPS 204 Appendix C. With probability about
-///   2^-99, 2^-81 and 2^-111 (ML-DSA-44, -65, -87) every round rejects and this returns an error.
-/// - It is roughly 25 to 50 times slower than [`sign`].
+/// - It is slow: 814 rounds where [`sign`] runs 3.85 to 5.1 on average.
+/// - With probability about 2^-315, 2^-256 and 2^-353 (ML-DSA-44, -65, -87) every round rejects
+///   and this returns an error.
 ///
 /// Use it only when a protocol requires deterministic signatures and the signer cannot be timed
 /// by an adversary (no co-located processes, no remote timing, no physical access). Otherwise use

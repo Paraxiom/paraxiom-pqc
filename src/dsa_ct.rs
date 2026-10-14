@@ -3,8 +3,9 @@
 //!
 //! [`sign_constant_time`] drives the vendored fork's
 //! [`ml_dsa::SigningKey::sign_deterministic_constant_time`]. It runs the FIPS 204 signing loop for
-//! a fixed 256 rounds and keeps the first candidate that passes the four bound checks, so the
-//! number of rounds no longer shows in the running time. The result is the deterministic FIPS 204
+//! a fixed 814 rounds, the lowest loop limit FIPS 204 allows (Appendix C, Table 3), and keeps the
+//! first candidate that passes the four bound checks, so the number of rounds no longer shows in
+//! the running time. The result is the deterministic FIPS 204
 //! signature (the tests below compare it with the fork's variable-length `sign_deterministic`).
 //! The kernel lives in the fork because it works on the crate's private field types.
 //!
@@ -19,21 +20,21 @@
 //! - **Not measured.** No timing measurement of this kernel exists. The figures in
 //!   `docs/SIDE-CHANNEL-AUDIT.md` were committed on 2026-07-10, two days before the kernel, and
 //!   describe upstream's loops.
-//! - **Not within the FIPS 204 loop limit.** FIPS 204 Appendix C (Table 3) sets 814 iterations as
-//!   the lowest limit an implementation may put on this loop. When all 256 rounds reject, the
-//!   kernel returns an error. With E the expected number of rounds from FIPS 204 Table 1, that
-//!   happens with probability (1 - 1/E)^256:
+//! - **Failure probability.** When all rounds reject, the kernel returns an error. With E the
+//!   expected number of rounds from FIPS 204 Table 1, that happens with probability (1 - 1/E)^n
+//!   for n rounds:
 //!
-//!   | Parameter set | E    | (1 - 1/E)^256   |
-//!   |---------------|------|-----------------|
-//!   | ML-DSA-44     | 4.25 | about 2^-99.1   |
-//!   | ML-DSA-65     | 5.1  | about 2^-80.6   |
-//!   | ML-DSA-87     | 3.85 | about 2^-111.1  |
+//!   | Parameter set | E    | n = 814 (now)   | n = 256 (until 2026-10-14) |
+//!   |---------------|------|-----------------|----------------------------|
+//!   | ML-DSA-44     | 4.25 | about 2^-315.0  | about 2^-99.1              |
+//!   | ML-DSA-65     | 5.1  | about 2^-256.3  | about 2^-80.6              |
+//!   | ML-DSA-87     | 3.85 | about 2^-353.2  | about 2^-111.1             |
 //!
-//!   An earlier version of this comment called 256 "the FIPS 204 statistical bound" and put the
-//!   failure probability below 2^-128. Both were wrong.
-//! - **Slower.** Every signature costs 256 rounds, against 3.85 to 5.1 on average for
-//!   [`crate::sign::sign`]. In a release build on one machine it was roughly 25 to 50 times slower.
+//!   The kernel used to stop at 256 rounds, below the FIPS 204 minimum. An earlier version of this
+//!   comment called 256 "the FIPS 204 statistical bound" and put the failure probability below
+//!   2^-128; both were wrong.
+//! - **Slow.** Every signature costs 814 rounds, against 3.85 to 5.1 on average for
+//!   [`crate::sign::sign`], so 160 to 211 times as many.
 
 use ml_dsa::{MlDsaParams, Signature, SigningKey};
 
