@@ -172,7 +172,7 @@ hash-based SLH-DSA — *untouched* by this claim); the gap is **KEM-only.**
    `paraxiom-pqc`. Reuse PQTG's existing `mix_keys` KDF as the combine primitive.
 4. **Sequencing:** not urgent (nothing costed). Tee up; don't let it pull focus from the 90-day gate.
 
-**Audit relevance (2026-08 PQTG + `paraxiom-pqc` audits).** Disclose proactively, in the spirit of the
+**Audit relevance (the PQTG and `paraxiom-pqc` audits planned in 2026-08).** Disclose proactively, in the spirit of the
 BeatQuantum scope letter's §2/§4: the KEM layer is single-family (Module-LWE); the Simon claim is the
 live pressure on it; the mitigation is the ML-KEM ⊕ HQC agility roadmap above. This is a **known
 limitation with a documented mitigation path, not a defect** — and it strengthens the honesty posture
@@ -184,7 +184,7 @@ the evaluation rewards. Relevant to BeatQuantum (PQTG) and to the crypto-core au
 A web spike answered the gating question above. **There is no usable pure-Rust HQC today:**
 - **RustCrypto** (source of our pure-Rust `ml-kem`) has **no HQC** crate.
 - The only HQC crate, **`pqcrypto-hqc`**, is **C bindings to PQClean** (breaks zero-C) **and** carries
-  **RUSTSEC-2026-0168** ("unlikely to receive further updates or fixes"). A non-starter for a zero-C, audited core.
+  **RUSTSEC-2026-0168** ("unlikely to receive further updates or fixes"). A non-starter for a zero-C core.
 - HQC's **side-channel surface is actively hot** (2025: timing leak in the deterministic-re-encryption
   rejection sampling *even with constant-time decoders*; single-trace power recovery of HQC-128 from
   ~3,500 traces, ePrint 2025/2162). A safe pure-Rust implementation is research-grade, not a port.

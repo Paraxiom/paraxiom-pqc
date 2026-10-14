@@ -3,7 +3,7 @@ name = "paraxiom-pqc"
 version = "0.1.4"
 edition = "2021"
 license = "GPL-3.0-only"
-description = "Paraxiom post-quantum cryptography — pure Rust, zero C. Unified API for ML-KEM, ML-DSA, SLH-DSA, and Falcon."
+description = "Paraxiom post-quantum cryptography in pure Rust, with no C code. One API for ML-KEM, ML-DSA, SLH-DSA and Falcon."
 repository = "https://github.com/Paraxiom/paraxiom-pqc"
 keywords = ["post-quantum", "cryptography", "ml-kem", "ml-dsa", "falcon"]
 categories = ["cryptography"]
@@ -34,7 +34,7 @@ rand_core = "0.10"
 zeroize = { version = "1", features = ["derive"] }
 thiserror = "2"
 
-# Optional: `qrng` feature — SHAKE256 entropy conditioning for QRNG-seeded keygen.
+# Optional: `qrng` feature, SHAKE256 entropy conditioning for QRNG-seeded keygen.
 sha3 = { version = "0.11", optional = true }
 
 [features]
@@ -46,7 +46,7 @@ sign = ["dep:ml-dsa", "dep:slh-dsa", "dep:falcon-rs"]
 # Falcon verification only (`paraxiom_pqc::falcon`), without ml-dsa/slh-dsa.
 falcon-verify = ["dep:falcon-rs"]
 # Seed post-quantum key generation from a pluggable quantum entropy source
-# (QKD/QRNG hardware). Default OFF — the default build uses the OS RNG.
+# (QKD/QRNG hardware). Off by default: the default build uses the OS RNG.
 qrng = ["dep:sha3"]
 # Crypto-agile key combiner (ADR 0001): QKD, ML-KEM and pre-shared secrets into one key.
 combiner = ["dep:sha3"]
