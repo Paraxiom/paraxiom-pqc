@@ -117,8 +117,11 @@ fn sign_verify_accepts_the_fixed_vector() {
 // Falcon-512 or Falcon-1024; and `sign::verify` passed Falcon keys to it without checking
 // `vk.algorithm`. A key labelled `SignAlgorithm::Falcon1024` accepted Falcon-512 signatures, and
 // a key of a toy degree (n = 4 below), which offers no security, verified under either label.
-// Present since a54d439 (the `falcon-verify` feature); fixed in 0.2.0. These tests failed before
-// the fix.
+// Present since the initial public release (9c821a9), including 0.1.0 to 0.1.3 on crates.io:
+// `sign::verify` never checked the degree or the label, and `falcon::verify` (a54d439, the
+// `falcon-verify` feature) had the same gap. Fixed in 0.2.0. These tests failed before the fix
+// (1bc69f3); both assertions of the label test (Falcon-512 under a Falcon-1024 label, and the
+// degree-4 key) also fail on git rev c0ee1f7 (version 0.1.3, the rev pq-transport-gateway pins).
 
 const TOY_MSG: &[u8] = b"paraxiom-pqc falcon toy degree vector";
 

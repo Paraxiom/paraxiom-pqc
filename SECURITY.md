@@ -18,7 +18,7 @@ remediation timeline after triage. Coordinated disclosure is appreciated.
 | Version | Supported |
 |---------|-----------|
 | 0.2.x   | ✅        |
-| 0.1.x   | ❌ (secret keys are not cleared from memory; upgrade to 0.2) |
+| 0.1.x   | ❌ (secret keys are not cleared from memory, and Falcon verification does not check the key's degree against its `Falcon512`/`Falcon1024` label: a Falcon-512 signature verifies under a Falcon-1024 label, and toy degrees with no security are accepted; upgrade to 0.2) |
 
 ## Scope & Cryptographic Note
 

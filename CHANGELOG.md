@@ -30,7 +30,12 @@ some change what is accepted at run time.
   (`SignAlgorithm::Falcon512` or `Falcon1024`) names; before, a key labelled Falcon-1024
   accepted Falcon-512 signatures. `sign::sign` (and the other signing functions) refuse a Falcon
   signing key whose header and length do not match its label. Callers that labelled keys of one
-  degree with the other must fix the label. Present since the `falcon-verify` feature was added.
+  degree with the other must fix the label. Present in every release since the initial public
+  release (9c821a9), including 0.1.0 to 0.1.3 on crates.io and git 0.1.4: `sign::verify`
+  passed Falcon keys to falcon-rs with no degree or label check from the start, and the
+  `falcon-verify` feature (a54d439) added `falcon::verify` with the same gap. Known 0.1.3 user:
+  pq-transport-gateway (pinned at git c0ee1f7), whose Falcon keys are pinned or allow-listed by
+  the operator and labelled Falcon-512, so its exposure is low.
 - `sign_deterministic_dangerous` for ML-DSA runs its fixed-round kernel for 814 rounds, the
   lowest loop limit FIPS 204 allows, instead of 256. Signatures are the same; signing is about
   3.2 times slower. The documentation now gives the failure probability of the kernel (about
