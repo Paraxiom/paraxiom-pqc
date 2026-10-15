@@ -7,7 +7,9 @@ description = "Paraxiom post-quantum cryptography in pure Rust, with no C code. 
 repository = "https://github.com/Paraxiom/paraxiom-pqc"
 keywords = ["post-quantum", "cryptography", "ml-kem", "ml-dsa", "falcon"]
 categories = ["cryptography"]
-exclude = ["lean/.lake/**", "lean/lake-manifest.json", "lean/.lake"]
+# Cargo.toml.save (a stale 0.1.3 manifest) and constant-time-hardening (an empty file) are
+# leftovers kept in git but not shipped.
+exclude = ["lean/.lake/**", "lean/lake-manifest.json", "lean/.lake", "Cargo.toml.save", "constant-time-hardening"]
 
 [workspace]
 members = [

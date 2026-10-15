@@ -75,7 +75,9 @@ let key = policy.combine(
   They are built only on x86/x86_64 with SSE2 and AArch64 with NEON, where all of it runs in
   hardware. On other targets `keypair` and `sign` return an error for Falcon and
   `sign::FALCON_SIGNING_AVAILABLE` is false. Verification uses integer arithmetic and works
-  everywhere, including with the `falcon-verify` feature alone. Signatures use falcon-rs's FN-DSA
+  everywhere, including with the `falcon-verify` feature alone. Verification accepts only
+  Falcon-512 and Falcon-1024 keys, and `sign::verify` only a key of the degree its label names
+  (since 0.2.0; before, any degree falcon-rs parses was accepted). Signatures use falcon-rs's FN-DSA
   framing and fixed-length encoding (809 bytes for Falcon-512), which differs from the round 3
   format and may change when FIPS 206 is final.
 - Timing measurements are in `docs/SIDE-CHANNEL-AUDIT.md`. They cover the timing channel only.
@@ -118,6 +120,26 @@ builds).
 ciphertexts, the encapsulation-key check, deterministic and hedged signing (the fixed-round
 ML-DSA kernel included) and verification. `tests/acvp/README.md` gives the source commit, the
 selection rules and what each test checks. Falcon has no ACVP vectors yet.
+
+`tests/properties.rs` holds property tests (proptest) for every exported algorithm: round trips,
+a flipped bit in the signature, message or key refused, a signature refused under another valid
+key or another scheme's label, ML-KEM implicit rejection (checked against J(z || c) computed
+independently), the FIPS 203 encapsulation-key check, and malformed or wrong-length input giving
+an error rather than a panic. The default case counts are small; set `PROPTEST_CASES` to run
+more. SLH-DSA-SHAKE-256s signing is skipped in debug builds (about a minute per signature);
+`cargo test --release --all-features` runs it.
+
+`fuzz/` holds cargo-fuzz targets for the byte-parsing and verification entry points
+(`kem::encapsulate`, `kem::decapsulate`, `sign::verify` for each scheme, `falcon::verify`, the
+signing functions on arbitrary key bytes, and the combiner). It is a separate workspace: libFuzzer
+is C++ and never enters this crate's dependency graph. Run with a nightly toolchain from `fuzz/`:
+`cargo +nightly fuzz run <target> -- -max_total_time=<seconds>`.
+
+`kani/` holds Kani bounded model-checking harnesses, also outside the workspace: short Falcon
+public keys are refused, the combiner's policy rules, and what `zeroize()` leaves in the secret
+types' buffers, each within stated bounds. Harnesses for the ML-KEM, ML-DSA and SLH-DSA parsers
+were not tractable and are not included. `kani/README.md` states each property, its bounds and
+what is not covered. None of them covers the cryptographic computations.
 
 ## License
 
