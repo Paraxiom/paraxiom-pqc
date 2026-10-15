@@ -395,6 +395,14 @@ mod falcon_secret {
     }
 
     pub(super) fn sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
+        // The key must be of the labelled degree: header 0x50 + logn and that degree's length.
+        let logn = super::falcon_logn(sk.algorithm);
+        let len = if logn == 10 { 2305 } else { 1281 };
+        if sk.bytes.len() != len || sk.bytes[0] != 0x50 + logn as u8 {
+            return Err(PqcError::Sign(
+                "invalid Falcon signing key for this algorithm".into(),
+            ));
+        }
         let kp = FnDsaKeyPair::from_private_key(&sk.bytes)
             .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
         let sig = kp
@@ -451,7 +459,20 @@ fn falcon_sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
     falcon_secret::sign(sk, msg)
 }
 
+/// log2 of the Falcon degree for a Falcon label: 9 for Falcon-512, 10 for Falcon-1024.
+fn falcon_logn(alg: SignAlgorithm) -> u32 {
+    match alg {
+        SignAlgorithm::Falcon1024 => 10,
+        _ => 9,
+    }
+}
+
+/// A key labelled Falcon-512 must be a Falcon-512 key, and likewise for Falcon-1024: a key of the
+/// other degree is refused (`Ok(false)`), as is any key `falcon::verify` refuses.
 fn falcon_verify(vk: &VerificationKey, msg: &[u8], sig: &Signature) -> Result<bool, PqcError> {
+    if crate::falcon::public_key_logn(&vk.bytes) != Some(falcon_logn(vk.algorithm)) {
+        return Ok(false);
+    }
     Ok(crate::falcon::verify(&vk.bytes, msg, &sig.bytes))
 }
 
@@ -581,6 +602,40 @@ mod tests {
                     sign_deterministic_dangerous(&foreign, b"guard").err()
                 ));
             }
+        }
+    }
+
+    /// A Falcon key of the other degree is refused under a label: a Falcon-512 key does not sign
+    /// or verify as Falcon-1024, and the reverse.
+    #[test]
+    fn falcon_label_must_match_the_key_degree() {
+        if !FALCON_SIGNING_AVAILABLE {
+            return;
+        }
+        for (alg, other) in [
+            (SignAlgorithm::Falcon512, SignAlgorithm::Falcon1024),
+            (SignAlgorithm::Falcon1024, SignAlgorithm::Falcon512),
+        ] {
+            let kp = keypair(alg).unwrap();
+            let sig = sign(&kp.sk, b"label").unwrap();
+            assert!(verify(&kp.vk, b"label", &sig).unwrap());
+            let relabelled_sk = SigningKey {
+                algorithm: other,
+                bytes: kp.sk.bytes.clone(),
+            };
+            assert!(
+                sign(&relabelled_sk, b"label").is_err(),
+                "{alg:?} as {other:?}"
+            );
+            let relabelled_vk = VerificationKey {
+                algorithm: other,
+                bytes: kp.vk.bytes.clone(),
+            };
+            let relabelled_sig = Signature {
+                algorithm: other,
+                bytes: sig.bytes.clone(),
+            };
+            assert!(!verify(&relabelled_vk, b"label", &relabelled_sig).unwrap());
         }
     }
 

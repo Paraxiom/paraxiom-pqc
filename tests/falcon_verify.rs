@@ -109,3 +109,64 @@ fn sign_verify_accepts_the_fixed_vector() {
     };
     assert!(sign::verify(&vk, MSG, &sig).unwrap());
 }
+
+// ── Falcon degree ───────────────────────────────────────────────────────────
+//
+// Before 0.2.0, `falcon::verify` took the Falcon degree from the key's header byte and accepted
+// every degree falcon-rs supports, n = 2 to 1024, although it was documented as verifying
+// Falcon-512 or Falcon-1024; and `sign::verify` passed Falcon keys to it without checking
+// `vk.algorithm`. A key labelled `SignAlgorithm::Falcon1024` accepted Falcon-512 signatures, and
+// a key of a toy degree (n = 4 below), which offers no security, verified under either label.
+// Present since a54d439 (the `falcon-verify` feature); fixed in 0.2.0. These tests failed before
+// the fix.
+
+const TOY_MSG: &[u8] = b"paraxiom-pqc falcon toy degree vector";
+
+/// falcon-rs 0.2.3, n = 4 (logn = 2):
+/// `FnDsaKeyPair::generate_deterministic(b"paraxiom-pqc falcon toy degree key", 2)`.
+const TOY_PUBLIC_KEY: &str = "0227da9b484ee9f5";
+
+/// `sign_deterministic(TOY_MSG, b"paraxiom-pqc falcon toy degree signature",
+/// &DomainSeparation::None)` with that key.
+const TOY_SIGNATURE: &str = concat!(
+    "52cd8e45892d2c84f3f16ac63616a46aa046b14e0927038ce1cabf0e0ce34a3b",
+    "4cb6bd309afbcb97edfe216c110440",
+);
+
+#[test]
+fn falcon_verify_refuses_degrees_other_than_512_and_1024() {
+    let (pk, sig) = (unhex(TOY_PUBLIC_KEY), unhex(TOY_SIGNATURE));
+    assert_eq!((pk.len(), sig.len()), (8, 47));
+    assert!(
+        !falcon::verify(&pk, TOY_MSG, &sig),
+        "a degree-4 Falcon key was accepted"
+    );
+}
+
+#[cfg(feature = "sign")]
+#[test]
+fn sign_verify_enforces_the_falcon_parameter_set() {
+    use paraxiom_pqc::sign::{self, SignAlgorithm, Signature, VerificationKey};
+
+    let accepted = |label: SignAlgorithm, pk: &str, msg: &[u8], sig: &str| {
+        let vk = VerificationKey {
+            algorithm: label,
+            bytes: unhex(pk),
+        };
+        let sig = Signature {
+            algorithm: label,
+            bytes: unhex(sig),
+        };
+        matches!(sign::verify(&vk, msg, &sig), Ok(true))
+    };
+    assert!(
+        !accepted(SignAlgorithm::Falcon1024, PUBLIC_KEY, MSG, SIGNATURE),
+        "a Falcon-512 key and signature verified as Falcon-1024"
+    );
+    for label in [SignAlgorithm::Falcon512, SignAlgorithm::Falcon1024] {
+        assert!(
+            !accepted(label, TOY_PUBLIC_KEY, TOY_MSG, TOY_SIGNATURE),
+            "a degree-4 Falcon key verified as {label:?}"
+        );
+    }
+}
