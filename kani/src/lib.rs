@@ -111,17 +111,20 @@ mod zeroize_clears_allocation {
     }
 }
 
-/// Length checks: Falcon public keys, and the combiner's policy rules.
+/// Length checks on the parsing entry points, and the combiner's policy rules.
 ///
-/// Harnesses for `kem::decapsulate`, ML-DSA signing and verification and SLH-DSA verification
-/// on wrong-length input were written and run (2026-10-15) and were not tractable: CBMC also
-/// explored the backends' cryptographic code (ML-KEM key expansion, ML-DSA decoding) under the
-/// length condition that rules it out, with a symbolic length and also with a concrete length
-/// per loop iteration, and none finished (the ML-KEM one took about 2.5 minutes per length).
-/// They were removed. Wrong lengths at those entry points are covered by the property tests
-/// (`kem_wrong_lengths_are_errors`, `wrong_length_signing_key_is_an_error`,
-/// `verify_never_accepts_or_panics_on_garbage`) and by the fuzz targets, which test and do not
-/// prove.
+/// The length runs over a range in a loop, concrete in each iteration, with symbolic contents;
+/// the algorithm is concrete too. With a symbolic length (or a symbolic algorithm label) CBMC
+/// also explores the cryptographic code that the length check rules out, and the harnesses did
+/// not finish: the symbolic Falcon harness was stopped after more than 30 minutes.
+///
+/// Two harnesses written in this concrete form were run on 2026-10-15 and timed out at the
+/// 15-minute harness timeout, and were removed: `kem::decapsulate` refusing ML-KEM-768 seeds of
+/// lengths 0 to 80 other than 64 (it reached length 10), and ML-DSA-65 signing refusing seeds of
+/// lengths 0 to 40 other than 32 through the three signing functions (it reached length 11).
+/// In both, CBMC still explored the backend (SHA-3, key expansion). Wrong lengths there are
+/// covered by the property tests (`kem_wrong_lengths_are_errors`,
+/// `wrong_length_signing_key_is_an_error`) and the fuzz targets, which test and do not prove.
 #[cfg(kani)]
 mod length_checks {
     use paraxiom_pqc::combiner::{Mechanism, Policy, Secret, MIN_SECRET_LEN};
@@ -158,6 +161,49 @@ mod length_checks {
                     },
                 );
                 assert!(matches!(r, Ok(false)));
+            }
+            len += 1;
+        }
+    }
+
+    /// ML-DSA-44 verification refuses a signature of each length 0 to 16 (the right one is
+    /// 2420), with any contents. The unwinding bound is 2421 because ml-dsa builds a
+    /// 2420-element array while parsing, whatever the input length.
+    #[kani::proof]
+    #[kani::unwind(2421)]
+    fn ml_dsa_verify_refuses_a_signature_of_the_wrong_length() {
+        let mut len = 0;
+        while len <= 16 {
+            let sig = Signature {
+                algorithm: SignAlgorithm::MlDsa44,
+                bytes: any_bytes_of_len::<16>(len),
+            };
+            let vk = VerificationKey {
+                algorithm: SignAlgorithm::MlDsa44,
+                bytes: Vec::new(),
+            };
+            assert!(sign::verify(&vk, b"m", &sig).is_err());
+            len += 1;
+        }
+    }
+
+    /// SLH-DSA-SHAKE-128f verification refuses a verification key of each length 0 to 40 other
+    /// than 32, with any contents.
+    #[kani::proof]
+    #[kani::unwind(42)]
+    fn slh_dsa_verify_refuses_a_key_of_the_wrong_length() {
+        let mut len = 0;
+        while len <= 40 {
+            if len != 32 {
+                let vk = VerificationKey {
+                    algorithm: SignAlgorithm::SlhDsaShake128f,
+                    bytes: any_bytes_of_len::<40>(len),
+                };
+                let sig = Signature {
+                    algorithm: SignAlgorithm::SlhDsaShake128f,
+                    bytes: Vec::new(),
+                };
+                assert!(sign::verify(&vk, b"m", &sig).is_err());
             }
             len += 1;
         }

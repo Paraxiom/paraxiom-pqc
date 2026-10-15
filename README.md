@@ -135,10 +135,10 @@ signing functions on arbitrary key bytes, and the combiner). It is a separate wo
 is C++ and never enters this crate's dependency graph. Run with a nightly toolchain from `fuzz/`:
 `cargo +nightly fuzz run <target> -- -max_total_time=<seconds>`.
 
-`kani/` holds Kani bounded model-checking harnesses, also outside the workspace: short Falcon
-public keys are refused, the combiner's policy rules, and what `zeroize()` leaves in the secret
-types' buffers, each within stated bounds. Harnesses for the ML-KEM, ML-DSA and SLH-DSA parsers
-were not tractable and are not included. `kani/README.md` states each property, its bounds and
+`kani/` holds Kani bounded model-checking harnesses, also outside the workspace: wrong-length
+Falcon keys, ML-DSA signatures and SLH-DSA keys are refused (for the lengths each harness
+lists), the combiner's policy rules, and what `zeroize()` leaves in the secret types' buffers.
+Harnesses for the ML-KEM seed and the ML-DSA signing seed timed out and are not included. `kani/README.md` states each property, its bounds and
 what is not covered. None of them covers the cryptographic computations.
 
 ## License
