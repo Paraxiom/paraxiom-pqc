@@ -1103,18 +1103,18 @@ mod test {
         let kp = P::from_seed(&seed);
         assert_eq!(kp.to_seed(), seed);
 
-        let sk = kp.signing_key.clone();
-        let vk = kp.verifying_key.clone();
+        let sk = &kp.signing_key;
+        let vk = &kp.verifying_key;
 
         let vk_bytes = vk.encode();
         let vk2 = VerifyingKey::<P>::decode(&vk_bytes);
-        assert!(vk == vk2);
+        assert!(*vk == vk2);
 
         #[allow(deprecated)]
         {
             let sk_bytes = sk.to_expanded();
             let sk2 = SigningKey::<P>::from_expanded(&sk_bytes);
-            assert!(sk == sk2);
+            assert!(*sk == sk2);
 
             let M = b"Hello world";
             let rnd = Array([0u8; 32]);
@@ -1137,11 +1137,11 @@ mod test {
         P: MlDsaParams + PartialEq,
     {
         let kp = P::from_seed(&Array::default());
-        let sk = kp.signing_key.clone();
-        let vk = kp.verifying_key.clone();
+        let sk = &kp.signing_key;
+        let vk = &kp.verifying_key;
         let vk_derived = sk.verifying_key();
 
-        assert!(vk == vk_derived);
+        assert!(*vk == vk_derived);
     }
 
     #[test]
@@ -1156,8 +1156,8 @@ mod test {
         P: MlDsaParams,
     {
         let kp = P::from_seed(&Array::default());
-        let sk = kp.signing_key.clone();
-        let vk = kp.verifying_key.clone();
+        let sk = &kp.signing_key;
+        let vk = &kp.verifying_key;
 
         let M = b"Hello world";
         let rnd = Array([0u8; 32]);
@@ -1180,8 +1180,8 @@ mod test {
             P: MlDsaParams,
         {
             let kp = P::from_seed(&Array::default());
-            let sk = kp.signing_key.clone();
-            let vk = kp.verifying_key.clone();
+            let sk = &kp.signing_key;
+            let vk = &kp.verifying_key;
 
             let M = b"Hello world";
             let rnd = Array([0u8; 32]);
@@ -1202,8 +1202,8 @@ mod test {
             P: MlDsaParams,
         {
             let kp = P::from_seed(&Array::default());
-            let sk = kp.signing_key.clone();
-            let vk = kp.verifying_key.clone();
+            let sk = &kp.signing_key;
+            let vk = &kp.verifying_key;
 
             let M = b"Hello world";
             let rnd = Array([0u8; 32]);
@@ -1224,8 +1224,8 @@ mod test {
             P: MlDsaParams,
         {
             let kp = P::from_seed(&Array::default());
-            let sk = kp.signing_key.clone();
-            let vk = kp.verifying_key.clone();
+            let sk = &kp.signing_key;
+            let vk = &kp.verifying_key;
 
             let M = b"Hello world";
             let rnd = Array([0u8; 32]);

@@ -112,8 +112,9 @@ An earlier version of the Lean files was published as
 combiner vectors (including cross-implementation vectors from pq-transport-gateway), QRNG
 seeding, a fixed Falcon-512 verification vector, the Falcon target guard, and checks that secret
 buffers are zero when their memory is freed. The vendored ML-DSA fork has its own tests:
-`cargo test -p ml-dsa --all-features` (its pkcs8 test needs `RUST_MIN_STACK=16777216` in debug
-builds).
+`cargo test -p ml-dsa --all-features`. Its unit tests run on the default stack; its pkcs8 test
+overflows the default stack in debug builds (it did before 0.2.0 too) and needs
+`RUST_MIN_STACK=16777216`.
 
 `tests/acvp.rs` runs subsets of the NIST ACVP vectors for ML-KEM, ML-DSA and SLH-DSA
 (SHAKE-128f and SHAKE-256s): key generation, encapsulation, decapsulation including modified
