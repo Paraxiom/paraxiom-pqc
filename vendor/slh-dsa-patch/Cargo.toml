@@ -12,19 +12,17 @@
 [package]
 edition = "2024"
 rust-version = "1.85"
-name = "slh-dsa"
+# Published under its own name so that paraxiom-pqc never resolves to upstream slh-dsa.
+name = "paraxiom-slh-dsa"
 version = "0.2.0-rc.4"
 build = false
-exclude = ["tests"]
+exclude = ["tests", "Cargo.toml.orig", ".cargo_vcs_info.json", ".cargo-ok"]
 autolib = false
 autobins = false
 autoexamples = false
 autotests = false
 autobenches = false
-description = """
-Pure Rust implementation of SLH-DSA (aka SPHINCS+) as described in the
-FIPS-205 standard
-"""
+description = "Paraxiom copy of RustCrypto slh-dsa 0.2.0-rc.4 (FIPS 205), changed only in two pkcs8/spki error lines so it builds against the pkcs8 version paraxiom-pqc uses. Use upstream slh-dsa unless you need it."
 homepage = "https://github.com/RustCrypto/signatures/tree/master/slh-dsa"
 readme = "README.md"
 keywords = [
@@ -33,7 +31,7 @@ keywords = [
 ]
 categories = ["cryptography"]
 license = "Apache-2.0 OR MIT"
-repository = "https://github.com/RustCrypto/signatures"
+repository = "https://github.com/Paraxiom/paraxiom-pqc"
 resolver = "2"
 
 [features]

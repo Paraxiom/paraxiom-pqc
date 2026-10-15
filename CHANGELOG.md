@@ -5,6 +5,14 @@
 0.2.0 rather than 0.1.5 because some changes break callers at compile time, on purpose, and
 some change what is accepted at run time.
 
+### Packaging
+
+- The vendored ML-DSA and SLH-DSA code is published under its own names,
+  `paraxiom-ml-dsa` (from RustCrypto ml-dsa 0.1.0-rc.7) and `paraxiom-slh-dsa` (from
+  RustCrypto slh-dsa 0.2.0-rc.4), pinned with `=` versions. Inside the crate they keep the
+  names `ml_dsa` and `slh_dsa`. Without this, a crates.io build would resolve upstream
+  ml-dsa and lose the zeroization and fixed-round signing changes.
+
 ### Breaking: compile time
 
 - `kem::DecapsulationKey`, `kem::SharedSecret` and `sign::SigningKey` now implement `Drop`

@@ -597,23 +597,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "cf8baf1c55e62ffcace7a9f06f4bd9cd3f0c4beb022d3b367256b91b87513d98"
 
 [[package]]
-name = "ml-dsa"
-version = "0.1.0-rc.7"
-dependencies = [
- "const-oid",
- "getrandom 0.4.3",
- "hex",
- "hex-literal",
- "hybrid-array",
- "module-lattice",
- "pkcs8",
- "rand_core 0.10.1",
- "sha3",
- "signature",
- "zeroize",
-]
-
-[[package]]
 name = "ml-kem"
 version = "0.3.0-rc.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -681,20 +664,67 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d6790f58c7ff633d8771f42965289203411a5e5c68388703c06e14f24770b41e"
 
 [[package]]
+name = "paraxiom-ml-dsa"
+version = "0.1.0-rc.7"
+dependencies = [
+ "const-oid",
+ "getrandom 0.4.3",
+ "hex",
+ "hex-literal",
+ "hybrid-array",
+ "module-lattice",
+ "pkcs8",
+ "rand_core 0.10.1",
+ "sha3",
+ "signature",
+ "zeroize",
+]
+
+[[package]]
 name = "paraxiom-pqc"
 version = "0.2.0"
 dependencies = [
  "criterion 0.5.1",
  "falcon-rs",
  "getrandom 0.3.4",
- "ml-dsa",
  "ml-kem",
+ "paraxiom-ml-dsa",
+ "paraxiom-slh-dsa",
  "proptest",
  "rand_core 0.10.1",
  "serde_json",
  "sha3",
- "slh-dsa",
  "thiserror",
+ "zeroize",
+]
+
+[[package]]
+name = "paraxiom-slh-dsa"
+version = "0.2.0-rc.4"
+dependencies = [
+ "aes",
+ "cipher",
+ "const-oid",
+ "criterion 0.7.0",
+ "ctr",
+ "digest",
+ "hex",
+ "hex-literal",
+ "hmac",
+ "hybrid-array",
+ "num-bigint",
+ "paste",
+ "pkcs8",
+ "proptest",
+ "rand 0.10.2",
+ "rand_core 0.10.1",
+ "serde",
+ "serde_json",
+ "sha2",
+ "sha3",
+ "signature",
+ "typenum",
+ "zerocopy",
  "zeroize",
 ]
 
@@ -1044,36 +1074,6 @@ name = "slab"
 version = "0.4.12"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
-
-[[package]]
-name = "slh-dsa"
-version = "0.2.0-rc.4"
-dependencies = [
- "aes",
- "cipher",
- "const-oid",
- "criterion 0.7.0",
- "ctr",
- "digest",
- "hex",
- "hex-literal",
- "hmac",
- "hybrid-array",
- "num-bigint",
- "paste",
- "pkcs8",
- "proptest",
- "rand 0.10.2",
- "rand_core 0.10.1",
- "serde",
- "serde_json",
- "sha2",
- "sha3",
- "signature",
- "typenum",
- "zerocopy",
- "zeroize",
-]
 
 [[package]]
 name = "spki"

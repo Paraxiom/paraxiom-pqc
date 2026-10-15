@@ -1,3 +1,5 @@
+> **This is not the RustCrypto crate.** It is Paraxiom's copy of RustCrypto [slh-dsa 0.2.0-rc.4](https://github.com/RustCrypto/signatures), published under its own name for [paraxiom-pqc](https://github.com/Paraxiom/paraxiom-pqc). It differs from upstream in two pkcs8/spki error-variant lines, so it builds against the pkcs8 version paraxiom-pqc uses; nothing else. Unless you need that, use the upstream crate. Licence and copyright are upstream's (Apache-2.0 OR MIT). The text below is upstream's README.
+
 # [RustCrypto]: SLH-DSA
 
 [![crate][crate-image]][crate-link]

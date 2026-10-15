@@ -86,7 +86,7 @@ let key = policy.combine(
 
 This code has not been externally audited. The algorithm crates (`ml-kem`, `ml-dsa`, `slh-dsa`)
 are pre-release versions whose authors state they have never been independently audited, and
-`ml-dsa` and `slh-dsa` are vendored here with local changes (`vendor/`). See `SECURITY.md`.
+`ml-dsa` and `slh-dsa` are vendored here with local changes (`vendor/`), published as `paraxiom-ml-dsa` and `paraxiom-slh-dsa`. See `SECURITY.md`.
 
 ## Why This Exists
 

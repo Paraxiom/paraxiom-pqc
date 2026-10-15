@@ -1,7 +1,15 @@
 [package]
-name = "ml-dsa"
+# Published under its own name so that paraxiom-pqc never resolves to upstream ml-dsa,
+# which lacks the zeroization and fixed-round signing changes made here.
+name = "paraxiom-ml-dsa"
 version = "0.1.0-rc.7"
 license = "Apache-2.0 OR MIT"
+description = "Paraxiom fork of RustCrypto ml-dsa 0.1.0-rc.7 (FIPS 204) with key zeroization and fixed-round signing, used by paraxiom-pqc. Use upstream ml-dsa unless you need these changes."
+repository = "https://github.com/Paraxiom/paraxiom-pqc"
+readme = "README.md"
+keywords = ["ml-dsa", "fips204", "signature", "post-quantum"]
+categories = ["cryptography"]
+exclude = ["Cargo.toml.orig", "Cargo.toml.bak", ".cargo_vcs_info.json", ".cargo-ok", "WP2_VISIBILITY_CHANGES.md"]
 edition = "2021"
 autotests = false
 autobenches = false

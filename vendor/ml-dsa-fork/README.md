@@ -1,3 +1,5 @@
+> **This is not the RustCrypto crate.** It is Paraxiom's copy of RustCrypto [ml-dsa 0.1.0-rc.7](https://github.com/RustCrypto/signatures), published under its own name for [paraxiom-pqc](https://github.com/Paraxiom/paraxiom-pqc). It differs from upstream in key zeroization (the `zeroize` feature now compiles and covers all key material), private `SigningKey` fields, and a fixed-round signing kernel that runs 814 rounds, the FIPS 204 minimum. Unless you need that, use the upstream crate. Licence and copyright are upstream's (Apache-2.0 OR MIT). The text below is upstream's README.
+
 # [RustCrypto]: ML-DSA
 
 [![crate][crate-image]][crate-link]

@@ -28,8 +28,8 @@ exclude = ["vendor/slh-dsa-patch", "fuzz", "kani"]
 # against modern pkcs8/spki; KEM-only builds sidestep that entirely).
 # `zeroize` makes the backends clear their own key structs on drop (falcon-rs always does).
 ml-kem = { version = "=0.3.0-rc.0", features = ["getrandom", "zeroize"] }
-ml-dsa = { path = "vendor/ml-dsa-fork", features = ["rand_core", "zeroize"], optional = true }
-slh-dsa = { path = "vendor/slh-dsa-patch", features = ["zeroize"], optional = true }
+ml-dsa = { package = "paraxiom-ml-dsa", version = "=0.1.0-rc.7", path = "vendor/ml-dsa-fork", features = ["rand_core", "zeroize"], optional = true }
+slh-dsa = { package = "paraxiom-slh-dsa", version = "=0.2.0-rc.4", path = "vendor/slh-dsa-patch", features = ["zeroize"], optional = true }
 falcon-rs = { version = "=0.2.3", optional = true }
 
 # Common dependencies
