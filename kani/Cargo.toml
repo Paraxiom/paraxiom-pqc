@@ -1,0 +1,18 @@
+# Kani proof harnesses for paraxiom-pqc. A separate crate, outside the library's workspace, so
+# that the library's sources and dependency graph are unchanged. Run from this directory:
+#   cargo kani
+[package]
+name = "paraxiom-pqc-kani"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[dependencies]
+paraxiom-pqc = { path = "..", features = ["sign", "combiner", "qrng"] }
+zeroize = "1"
+
+[workspace]
+members = ["."]
+
+[lints.rust]
+unexpected_cfgs = { level = "warn", check-cfg = ["cfg(kani)"] }
