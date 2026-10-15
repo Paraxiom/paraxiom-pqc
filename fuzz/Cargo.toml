@@ -1,0 +1,81 @@
+# cargo-fuzz harness for paraxiom-pqc. Not part of the library's workspace and not a dependency
+# of it: libfuzzer-sys builds libFuzzer (C++), which must never enter the library's own
+# dependency graph (zero C). Run with a nightly toolchain:
+#   cargo +nightly fuzz run <target> -- -max_total_time=600
+[package]
+name = "paraxiom-pqc-fuzz"
+version = "0.0.0"
+publish = false
+edition = "2021"
+
+[package.metadata]
+cargo-fuzz = true
+
+[dependencies]
+libfuzzer-sys = "0.4"
+paraxiom-pqc = { path = "..", features = ["sign", "combiner"] }
+# The combiner target recomputes the documented encoding's hash independently.
+sha3 = "0.11"
+
+# Its own workspace, so that the library's workspace never includes it.
+[workspace]
+members = ["."]
+
+[lib]
+path = "src/lib.rs"
+
+[[bin]]
+name = "gen_corpus"
+path = "src/gen_corpus.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kem_encapsulation_key"
+path = "fuzz_targets/kem_encapsulation_key.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "kem_decapsulate"
+path = "fuzz_targets/kem_decapsulate.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "ml_dsa_verify"
+path = "fuzz_targets/ml_dsa_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "slh_dsa_verify"
+path = "fuzz_targets/slh_dsa_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "falcon_verify"
+path = "fuzz_targets/falcon_verify.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "signing_key"
+path = "fuzz_targets/signing_key.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "combiner"
+path = "fuzz_targets/combiner.rs"
+test = false
+doc = false
+bench = false
