@@ -49,7 +49,11 @@ fn main() {
     }
     let kp = sign_seed("slh_dsa_verify", 0, SignAlgorithm::SlhDsaShake128f);
     write("signing_key", "slh-dsa-128f", &join(3, &kp.sk.bytes, b"", msg));
-    sign_seed("slh_dsa_verify", 1, SignAlgorithm::SlhDsaShake256s);
+    write("slh_dsa_signing_key", "valid-128f", &join(0, &kp.sk.bytes, b"", msg));
+    let kp = sign_seed("slh_dsa_verify", 1, SignAlgorithm::SlhDsaShake256s);
+    write("slh_dsa_signing_key", "valid-256s", &join(7, &kp.sk.bytes, b"", msg));
+    write("slh_dsa_roundtrip", "empty", b"");
+    write("slh_dsa_roundtrip", "message", msg);
     if sign::FALCON_SIGNING_AVAILABLE {
         let kp = sign_seed("falcon_verify", 0, SignAlgorithm::Falcon512);
         write("signing_key", "falcon-512", &join(4, &kp.sk.bytes, b"", msg));

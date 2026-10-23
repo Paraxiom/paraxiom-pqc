@@ -79,3 +79,17 @@ path = "fuzz_targets/combiner.rs"
 test = false
 doc = false
 bench = false
+
+[[bin]]
+name = "slh_dsa_signing_key"
+path = "fuzz_targets/slh_dsa_signing_key.rs"
+test = false
+doc = false
+bench = false
+
+[[bin]]
+name = "slh_dsa_roundtrip"
+path = "fuzz_targets/slh_dsa_roundtrip.rs"
+test = false
+doc = false
+bench = false
