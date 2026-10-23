@@ -21,14 +21,15 @@ targets for hours, not minutes.
 "Proof candidate" refers to the halts statement of OSS Verify (theorem-labs/oss-verify): on every
 input under 64 MiB, a static RISC-V build exits normally, with no crash, hang, failed assertion
 or sanitizer detection. A target that checks a property then proves that property for every
-such input.
+such input. "Plausible" means only that the code these targets reach has bounded loops: nothing
+here has yet been built for static riscv64 or run through their pipeline.
 
 | Target | Property checked | Proof candidate as written |
 |---|---|---|
-| `combiner` | The combiner's output equals the documented encoding, hashed independently with SHA3-256; secrets that do not match the policy are refused | yes: SHA3 and loops bounded by the input |
-| `slh_dsa_verify` | Any key, signature and message: verification never accepts wrong lengths and never panics | yes: SLH-DSA has fixed iteration counts |
-| `slh_dsa_signing_key` | SLH-DSA alone: a signing key of the wrong length is refused; a signature has the FIPS 205 length | yes |
-| `slh_dsa_roundtrip` | A fresh key pair signs the input; the signature verifies; signing twice gives the same bytes | yes. Key generation reads the OS random source, and the statement covers every OS response |
+| `combiner` | The combiner's output equals the documented encoding, hashed independently with SHA3-256; secrets that do not match the policy are refused | plausible: only bounded loops found (SHA3, loops over the input) |
+| `slh_dsa_verify` | Any key, signature and message: verification never accepts wrong lengths and never panics | plausible: only bounded loops found (SLH-DSA has fixed iteration counts) |
+| `slh_dsa_signing_key` | SLH-DSA alone: a signing key of the wrong length is refused; a signature has the FIPS 205 length | plausible: only bounded loops found |
+| `slh_dsa_roundtrip` | Whenever key generation succeeds: a fresh key pair signs the input, the signature verifies, and signing twice gives the same bytes | plausible: only bounded loops found. A failed key generation ends the run normally, so the target does not depend on how the OS random source is modelled |
 | `kem_encapsulation_key` | Acceptance equals the FIPS 203 section 7.2 check, written independently | no, see below |
 | `kem_decapsulate` | Acceptance exactly when the lengths are right; the secret is 32 bytes | no, see below |
 | `ml_dsa_verify` | Verification accepts only the right lengths | no, see below |
