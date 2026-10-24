@@ -43,6 +43,16 @@ pub fn split(mut data: &[u8]) -> Fields<'_> {
     }
 }
 
+/// The longest message, context or QKD key that a fuzz target passes to the library. OSS Verify
+/// asks that each size taken from the input be bounded, so that each run ends quickly (its
+/// enrollment skill, section 3.5). No property here needs a longer one.
+pub const MAX_LEN: usize = 1024;
+
+/// The first [`MAX_LEN`] bytes of `s`.
+pub fn bounded(s: &[u8]) -> &[u8] {
+    &s[..s.len().min(MAX_LEN)]
+}
+
 pub fn join(selector: u8, a: &[u8], b: &[u8], rest: &[u8]) -> Vec<u8> {
     let mut out = vec![selector];
     out.extend_from_slice(&u16::try_from(a.len()).unwrap().to_le_bytes());

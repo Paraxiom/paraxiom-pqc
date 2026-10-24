@@ -8,7 +8,7 @@ use paraxiom_pqc::combiner::{
     qkd_pqc_v2, CombinerError, Mechanism, Policy, Secret, COMBINER_LABEL, MIN_SECRET_LEN,
     PQTG_MIXING_LABEL,
 };
-use paraxiom_pqc_fuzz::split;
+use paraxiom_pqc_fuzz::{bounded, split};
 use sha3::{Digest, Sha3_256};
 
 const ALL: [Mechanism; 5] = [
@@ -37,7 +37,10 @@ fn len_ok(m: Mechanism, len: usize) -> bool {
     }
 }
 
-fuzz_target!(|data: &[u8]| {
+// The body is a named function so that coverage tools report its lines (the macro hides them).
+fuzz_target!(|data: &[u8]| check(data));
+
+fn check(data: &[u8]) {
     let f = split(data);
 
     // Policy: up to 7 mechanisms, one byte each (duplicates allowed, to test refusal).
@@ -64,7 +67,7 @@ fuzz_target!(|data: &[u8]| {
         secrets.push(Secret::new(m, &b[2..2 + len]));
         b = &b[2 + len..];
     }
-    let context = f.rest;
+    let context = bounded(f.rest);
 
     if let Ok(p) = policy {
         let r = p.combine(&secrets, context);
@@ -92,13 +95,14 @@ fuzz_target!(|data: &[u8]| {
 
     // qkd_pqc_v2: any QKD key, a 32-byte PQC key.
     if f.b.len() >= 32 {
+        let qkd = bounded(f.a);
         let pqc: [u8; 32] = f.b[..32].try_into().unwrap();
-        let out = qkd_pqc_v2(f.a, &pqc);
+        let out = qkd_pqc_v2(qkd, &pqc);
         let mut h = Sha3_256::new();
         h.update(PQTG_MIXING_LABEL);
-        h.update((f.a.len() as u32).to_be_bytes());
-        h.update(f.a);
+        h.update((qkd.len() as u32).to_be_bytes());
+        h.update(qkd);
         h.update(pqc);
         assert_eq!(out.as_slice(), h.finalize().as_slice());
     }
-});
+}

@@ -12,15 +12,19 @@
 
 use libfuzzer_sys::fuzz_target;
 use paraxiom_pqc::sign::{self, SignAlgorithm, SigningKey, VerificationKey};
+use paraxiom_pqc_fuzz::bounded;
 use slh_dsa::{Shake128f, VerifyingKey};
 
 const N: usize = 16;
 
-fuzz_target!(|data: &[u8]| {
+// The body is a named function so that coverage tools report its lines (the macro hides them).
+fuzz_target!(|data: &[u8]| check(data));
+
+fn check(data: &[u8]) {
     let mut seeds = [0u8; 3 * N];
     let taken = data.len().min(3 * N);
     seeds[..taken].copy_from_slice(&data[..taken]);
-    let msg = &data[taken..];
+    let msg = bounded(&data[taken..]);
     let (sk_seed, rest) = seeds.split_at(N);
     let (sk_prf, pk_seed) = rest.split_at(N);
 
@@ -36,4 +40,4 @@ fuzz_target!(|data: &[u8]| {
     assert_eq!(sign::verify(&vk, msg, &sig).ok(), Some(true), "a fresh signature does not verify");
     let again = sign::sign(&sk, msg).expect("signing twice failed");
     assert_eq!(again.bytes, sig.bytes, "SLH-DSA signing is not deterministic");
-});
+}
