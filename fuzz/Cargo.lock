@@ -303,6 +303,7 @@ version = "0.0.0"
 dependencies = [
  "libfuzzer-sys",
  "paraxiom-pqc",
+ "paraxiom-slh-dsa",
  "sha3",
 ]
 

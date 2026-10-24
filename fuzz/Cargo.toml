@@ -14,6 +14,9 @@ cargo-fuzz = true
 [dependencies]
 libfuzzer-sys = "0.4"
 paraxiom-pqc = { path = "..", features = ["sign", "combiner"] }
+# slh_dsa_roundtrip derives its key pair from the input with FIPS 205 key generation: OSS Verify
+# allows no OS random source. Same vendored crate and version as the library.
+slh-dsa = { package = "paraxiom-slh-dsa", version = "=0.2.0-rc.4", path = "../vendor/slh-dsa-patch" }
 # The combiner target recomputes the documented encoding's hash independently.
 sha3 = "0.11"
 

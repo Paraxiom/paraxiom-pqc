@@ -29,11 +29,11 @@ here has yet been built for static riscv64 or run through their pipeline.
 | `combiner` | The combiner's output equals the documented encoding, hashed independently with SHA3-256; secrets that do not match the policy are refused | plausible: only bounded loops found (SHA3, loops over the input) |
 | `slh_dsa_verify` | Any key, signature and message: verification never accepts wrong lengths and never panics | plausible: only bounded loops found (SLH-DSA has fixed iteration counts) |
 | `slh_dsa_signing_key` | SLH-DSA alone: a signing key of the wrong length is refused; a signature has the FIPS 205 length | plausible: only bounded loops found |
-| `slh_dsa_roundtrip` | Whenever key generation succeeds: a fresh key pair signs the input, the signature verifies, and signing twice gives the same bytes | plausible: only bounded loops found. A failed key generation ends the run normally, so the target does not depend on how the OS random source is modelled |
-| `kem_encapsulation_key` | Acceptance equals the FIPS 203 section 7.2 check, written independently | no, see below |
+| `slh_dsa_roundtrip` | A key pair derived from the input (FIPS 205 key generation) signs the rest of the input; the signature verifies; signing twice gives the same bytes | plausible: only bounded loops found, and every random value comes from the input |
+| `kem_encapsulation_key` | Acceptance equals the FIPS 203 section 7.2 check, written independently | no: unbounded sampling, and encapsulation reads the OS random source; see below |
 | `kem_decapsulate` | Acceptance exactly when the lengths are right; the secret is 32 bytes | no, see below |
 | `ml_dsa_verify` | Verification accepts only the right lengths | no, see below |
-| `signing_key` | Any signing key for any algorithm: lengths, labels, Falcon headers | not as a whole; its SLH-DSA part is `slh_dsa_signing_key` |
+| `signing_key` | Any signing key for any algorithm: lengths, labels, Falcon headers | no: hedged ML-DSA signing, `sign_randomized` and Falcon read the OS random source, and ML-DSA samples without bound. Its SLH-DSA part is `slh_dsa_signing_key` |
 | `falcon_verify` | The direct Falcon API and `sign::verify` agree | probably not, see below |
 
 ## Why some targets are not proof candidates as written
@@ -52,6 +52,15 @@ The ML-DSA signing loop is bounded: `vendor/ml-dsa-fork/src/lib.rs:391` stops at
 the fixed-round kernel runs the 814 rounds of FIPS 204 Appendix C, Table 3. Appendix C is where
 any limit on the sampling loops would also come from. Bounding them is a library decision and is
 not made here.
+
+## Randomness comes from the input
+
+OSS Verify runs a target as one thread whose only data is its input: no clock, no network, no
+environment and no random numbers. A target that draws from the OS random source is therefore
+outside what can be proved, or its property becomes vacuous. `slh_dsa_roundtrip` derives its key
+pair from the input for this reason. `kem_encapsulation_key` (encapsulation draws its message
+from the OS) and `signing_key` (hedged and randomized signing) still do; making them
+deterministic needs seeded entry points in the library, which is a decision for the library.
 
 ## Left out on purpose
 
