@@ -1,15 +1,19 @@
 //! SLH-DSA alone, so that its signing path can stand as a proof target without the ML-DSA and
-//! Falcon paths of `signing_key`: any byte string as a signing key, any message. A key of the
-//! wrong length is refused; a signature that comes out has the algorithm and the FIPS 205
-//! length of its parameter set. SLH-DSA-SHAKE-256s signs slowly, so it gets one input in eight.
+//! Falcon paths of `signing_key`: any byte string as a signing key, any message up to 1024 bytes.
+//! A key of the wrong length is refused; a signature that comes out has the algorithm and the
+//! FIPS 205 length of its parameter set. SLH-DSA-SHAKE-256s signs slowly, so it gets one input in
+//! eight.
 
 #![no_main]
 
 use libfuzzer_sys::fuzz_target;
 use paraxiom_pqc::sign::{self, SignAlgorithm, SigningKey};
-use paraxiom_pqc_fuzz::split;
+use paraxiom_pqc_fuzz::{bounded, split};
 
-fuzz_target!(|data: &[u8]| {
+// The body is a named function so that coverage tools report its lines (the macro hides them).
+fuzz_target!(|data: &[u8]| check(data));
+
+fn check(data: &[u8]) {
     let f = split(data);
     let (alg, sk_len, sig_len) = if f.selector % 8 == 7 {
         (SignAlgorithm::SlhDsaShake256s, 128, 29792)
@@ -17,11 +21,17 @@ fuzz_target!(|data: &[u8]| {
         (SignAlgorithm::SlhDsaShake128f, 64, 17088)
     };
     let sk = SigningKey { algorithm: alg, bytes: f.a.to_vec() };
-    let signed = sign::sign(&sk, f.rest);
+    let signed = sign::sign(&sk, bounded(f.rest));
     if f.a.len() != sk_len {
+        // A signing key of the wrong length is refused. Mutant: in `slh_dsa_sign`,
+        // `try_from(sk.bytes.as_slice())` becomes `try_from(&sk.bytes[1..])`; input
+        // `long-key-128f` from `slh_dsa_signing_key_seed_corpus.zip`.
         assert!(signed.is_err(), "a signing key of the wrong length was accepted");
     }
     if let Ok(sig) = signed {
+        // A signature has its algorithm and the FIPS 205 length of its parameter set. Mutant: in
+        // `slh_dsa_sign`, `bytes: sig.to_vec()` becomes `bytes: sig.to_vec()[1..].to_vec()`; input
+        // `valid-128f`.
         assert_eq!((sig.algorithm, sig.bytes.len()), (alg, sig_len));
     }
-});
+}
