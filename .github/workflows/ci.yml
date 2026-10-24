@@ -47,3 +47,16 @@ jobs:
       # This type-checks the refusing path in src/sign.rs and the tests that cover it.
       - name: Check the refusing Falcon path (locked)
         run: cargo check --locked --all-features --lib --tests --target riscv64gc-unknown-linux-gnu
+
+  zero-c:
+    name: no C in the library's dependency graph
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      # Fails when the default, KEM-only or full feature set, on any target, pulls in a crate that
+      # compiles C or binds a C library (scripts/check-zero-c.sh lists them). The fuzz harness in
+      # fuzz/ is a separate workspace and is not checked.
+      - name: No C in the dependency graph (locked)
+        run: bash scripts/check-zero-c.sh
