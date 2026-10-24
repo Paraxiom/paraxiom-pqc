@@ -13,7 +13,8 @@ cargo +nightly fuzz run <target> -- -max_total_time=600
 ```
 
 SLH-DSA is slow under AddressSanitizer: on 2026-10-23 on this Mac (aarch64), `slh_dsa_roundtrip`
-made 184 runs in 62 s and `slh_dsa_signing_key` 103 runs in 64 s, with no failure. Fuzz the SLH-DSA
+made 185 runs in 61 s (its input-seeded version, 2026-10-24) and `slh_dsa_signing_key` 103 runs in
+64 s, with no failure. Fuzz the SLH-DSA
 targets for hours, not minutes.
 
 ## Targets
@@ -80,6 +81,7 @@ Whether a mismatched label should be refused is a decision for the library.
 ## How to describe a result
 
 Say exactly what was proved, for example: "On static RISC-V builds, no input under 64 MiB makes
-`slh_dsa_roundtrip` crash, hang or fail a check; so every fresh SLH-DSA-SHAKE-128f signature of
-such a message verifies, and signing is deterministic." Not "formally verified", and nothing about
+`slh_dsa_roundtrip` crash, hang or fail a check; so for every key pair generated from such an
+input, the SLH-DSA-SHAKE-128f signature of the rest of the input verifies, and signing is
+deterministic." Not "formally verified", and nothing about
 constant time or the other algorithms.
