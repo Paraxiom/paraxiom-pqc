@@ -27,10 +27,10 @@ here has yet been built for static riscv64 or run through their pipeline.
 
 | Target | Property checked | Proof candidate as written |
 |---|---|---|
-| `combiner` | The combiner's output equals the documented encoding, hashed independently with SHA3-256; secrets that do not match the policy are refused | plausible: only bounded loops found (SHA3, loops over the input) |
-| `slh_dsa_verify` | Any key, signature and message: verification never accepts wrong lengths and never panics | plausible: only bounded loops found (SLH-DSA has fixed iteration counts) |
-| `slh_dsa_signing_key` | SLH-DSA alone: a signing key of the wrong length is refused; a signature has the FIPS 205 length | plausible: only bounded loops found |
-| `slh_dsa_roundtrip` | A key pair derived from the input (FIPS 205 key generation) signs the rest of the input; the signature verifies; signing twice gives the same bytes | plausible: only bounded loops found, and every random value comes from the input |
+| `combiner` | The combiner's output equals the documented encoding, hashed independently with SHA3-256; secrets that do not match the policy are refused. Contexts and QKD keys up to 1024 bytes | plausible: only bounded loops found (SHA3, loops over the input) |
+| `slh_dsa_verify` | Any key and signature, messages up to 1024 bytes: verification never accepts wrong lengths and never panics | plausible: only bounded loops found (SLH-DSA has fixed iteration counts) |
+| `slh_dsa_signing_key` | SLH-DSA alone, messages up to 1024 bytes: a signing key of the wrong length is refused; a signature has the FIPS 205 length | plausible: only bounded loops found |
+| `slh_dsa_roundtrip` | A key pair derived from the input (FIPS 205 key generation) signs the next 1024 bytes of the input at most; the signature verifies; signing twice gives the same bytes | plausible: only bounded loops found, and every random value comes from the input |
 | `kem_encapsulation_key` | Acceptance equals the FIPS 203 section 7.2 check, written independently | no: unbounded sampling, and encapsulation reads the OS random source; see below |
 | `kem_decapsulate` | Acceptance exactly when the lengths are right; the secret is 32 bytes | no, see below |
 | `ml_dsa_verify` | Verification accepts only the right lengths | no, see below |
@@ -63,6 +63,27 @@ pair from the input for this reason. `kem_encapsulation_key` (encapsulation draw
 from the OS) and `signing_key` (hedged and randomized signing) still do; making them
 deterministic needs seeded entry points in the library, which is a decision for the library.
 
+## Sizes are bounded
+
+OSS Verify also asks that each size taken from the input be bounded, so that each run ends
+quickly (section 3.5 of its enrollment skill). The four targets above pass at most 1024 bytes of
+message, context or QKD key to the library (`MAX_LEN` in `fuzz/src/lib.rs`); longer inputs are
+cut. No property here needs a longer one, but a proof would then cover only these sizes.
+
+## Each check runs, and each can fail
+
+For the four targets above, OSS Verify asks two things of each property (sections 3.3 and 3.4 of
+its enrollment skill):
+
+- **It runs.** A seed corpus per target (`<target>_seed_corpus.zip` in the enrollment directory)
+  runs every call and every property check at least once. Measured on 2026-10-24 with
+  `cargo fuzz coverage` and `llvm-cov`. The only check never reached is the `panic!` for an
+  unexpected policy error in `combiner`, which can fire only if the library has a bug.
+- **It can fail.** For each of the 18 properties, a one-line change to the library (or, for the
+  key lengths in `slh_dsa_roundtrip`, to the target) makes the target abort at that property on
+  one seed input. The comment above each property names the change and the input. All 18 were
+  run on 2026-10-24 and each aborted where expected.
+
 ## Left out on purpose
 
 - **A KEM round trip.** `tests/properties.rs` covers it with proptest. "Decapsulation always
@@ -82,6 +103,6 @@ Whether a mismatched label should be refused is a decision for the library.
 
 Say exactly what was proved, for example: "On static RISC-V builds, no input under 64 MiB makes
 `slh_dsa_roundtrip` crash, hang or fail a check; so for every key pair generated from such an
-input, the SLH-DSA-SHAKE-128f signature of the rest of the input verifies, and signing is
-deterministic." Not "formally verified", and nothing about
+input, the SLH-DSA-SHAKE-128f signature of the next 1024 bytes of the input at most verifies,
+and signing is deterministic." Not "formally verified", and nothing about
 constant time or the other algorithms.
