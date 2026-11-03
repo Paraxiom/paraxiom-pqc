@@ -52,7 +52,7 @@ justifies it.
 ## Grounded current state (2026-06-22)
 
 - `paraxiom-pqc`: pure-PQC primitives only — KEM `MlKem{512,768,1024}`; SIG `MlDsa{44,65,87}`,
-  `SlhDsaShake{128f,256s}`, `Falcon{512,1024}`. **No classical, no combiner, no X.509/DER.**
+  `SlhDsaShake{128f,256s,256f}` (256f added 2026-11-03), `Falcon{512,1024}`. **No classical, no combiner, no X.509/DER.**
 - Assumption diversity available **today** for PQC⊕PQC **signatures**: lattice
   (ML-DSA/Falcon) **⊕** hash-based (**SLH-DSA**) — genuinely different hardness, so a lattice
   break is survived by the hash-based half. This is the strong, immediately-buildable PQC⊕PQC.

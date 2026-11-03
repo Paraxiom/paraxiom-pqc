@@ -15,6 +15,9 @@ some change what is accepted at run time.
 
 ### Breaking: compile time
 
+- `SignAlgorithm` has a new variant, `SlhDsaShake256f`, so an exhaustive `match` on it no longer
+  compiles until it handles that variant. It is added after `Falcon1024`, so the existing variants
+  keep their positions.
 - `kem::DecapsulationKey`, `kem::SharedSecret` and `sign::SigningKey` now implement `Drop`
   (`ZeroizeOnDrop`), so their `bytes` field can no longer be moved out: code such as
   `let seed = keypair.sk.bytes;` or `let key = shared_secret.bytes;` fails with E0509.
@@ -27,6 +30,10 @@ some change what is accepted at run time.
 
 ### Breaking: run time
 
+- `sign::sign_randomized` now signs SLH-DSA in the hedged mode of FIPS 205 (fresh `opt_rand`),
+  where it used to fall back to the deterministic `sign`. Two calls on one message now give
+  different signatures. Both are standard FIPS 205 signatures and verify as before. `sign` itself
+  is unchanged: SLH-DSA stays deterministic there.
 - Falcon `keypair`, `sign`, `sign_randomized` and `sign_deterministic_dangerous` return an error
   on targets other than x86/x86_64 with SSE2 and AArch64 with NEON, where falcon-rs's floating
   point on secret values would run in software. Verification works on every target. New
@@ -64,6 +71,17 @@ some change what is accepted at run time.
 
 ### Added
 
+- SLH-DSA-SHAKE-256f (`SignAlgorithm::SlhDsaShake256f`, FIPS 205, category 5): 128-byte signing
+  key, 64-byte verification key, 49,856-byte signature.
+- Context strings: `sign::sign_with_context`, `sign::verify_with_context` and
+  `sign::MAX_CONTEXT_LEN` (255), the domain separation of FIPS 204 and FIPS 205 in pure mode.
+  Signing is hedged. A context longer than 255 bytes is an error, and so is a non-empty context
+  with Falcon. `verify` is `verify_with_context` with an empty context. For SLH-DSA,
+  `sign_with_context` is hedged even with an empty context, while `sign` stays deterministic.
+- NIST ACVP vectors for SLH-DSA-SHAKE-256f (keyGen 10, sigGen 3, sigVer 8), cut with
+  `tests/acvp/extract.py` from the same ACVP-Server commit and source files (SHA-256 unchanged).
+  `sign::verify_with_context` is checked against every ML-DSA and SLH-DSA sigVer vector, with
+  its own context.
 - NIST ACVP vector tests for ML-KEM, ML-DSA and SLH-DSA (`tests/acvp.rs`).
 - Property tests (`tests/properties.rs`), run-time zeroization checks with a watching allocator
   (`tests/zeroize.rs`), cargo-fuzz targets (`fuzz/`) and Kani harnesses (`kani/`). See the README

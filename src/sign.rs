@@ -19,6 +19,8 @@ pub enum SignAlgorithm {
     SlhDsaShake256s,
     Falcon512,
     Falcon1024,
+    /// Added after `Falcon1024` so that the existing variants keep their positions.
+    SlhDsaShake256f,
 }
 
 /// Signing key (secret).
@@ -52,6 +54,7 @@ pub fn keypair(alg: SignAlgorithm) -> Result<SignKeypair, PqcError> {
         SignAlgorithm::MlDsa87 => ml_dsa_keygen::<ml_dsa::MlDsa87>(alg, &*random_seed()?),
         SignAlgorithm::SlhDsaShake128f => slh_dsa_keygen::<slh_dsa::Shake128f>(alg, 16),
         SignAlgorithm::SlhDsaShake256s => slh_dsa_keygen::<slh_dsa::Shake256s>(alg, 32),
+        SignAlgorithm::SlhDsaShake256f => slh_dsa_keygen::<slh_dsa::Shake256f>(alg, 32),
         SignAlgorithm::Falcon512 => falcon_keygen(9, alg),
         SignAlgorithm::Falcon1024 => falcon_keygen(10, alg),
     }
@@ -101,18 +104,20 @@ pub fn keypair_qrng<S: crate::qrng::QuantumSource>(
 /// That is below the threshold, not proof of constant time: |t| 4.4 is close to it, and the
 /// expected number of rounds still depends on the key.
 ///
-/// SLH-DSA signs deterministically. Falcon is randomized by construction, and is built only on
-/// some targets: see [`FALCON_SIGNING_AVAILABLE`].
+/// SLH-DSA signs deterministically here; [`sign_randomized`] and [`sign_with_context`] sign it
+/// hedged. Falcon is randomized by construction, and is built only on some targets: see
+/// [`FALCON_SIGNING_AVAILABLE`].
 ///
 /// If a protocol requires deterministic ML-DSA signatures, use [`sign_deterministic_dangerous`]
 /// and read its warning first.
 pub fn sign(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
     match sk.algorithm {
-        SignAlgorithm::MlDsa44 => ml_dsa_sign_randomized::<ml_dsa::MlDsa44>(sk, msg),
-        SignAlgorithm::MlDsa65 => ml_dsa_sign_randomized::<ml_dsa::MlDsa65>(sk, msg),
-        SignAlgorithm::MlDsa87 => ml_dsa_sign_randomized::<ml_dsa::MlDsa87>(sk, msg),
+        SignAlgorithm::MlDsa44 => ml_dsa_sign_randomized::<ml_dsa::MlDsa44>(sk, msg, b""),
+        SignAlgorithm::MlDsa65 => ml_dsa_sign_randomized::<ml_dsa::MlDsa65>(sk, msg, b""),
+        SignAlgorithm::MlDsa87 => ml_dsa_sign_randomized::<ml_dsa::MlDsa87>(sk, msg, b""),
         SignAlgorithm::SlhDsaShake128f => slh_dsa_sign::<slh_dsa::Shake128f>(sk, msg),
         SignAlgorithm::SlhDsaShake256s => slh_dsa_sign::<slh_dsa::Shake256s>(sk, msg),
+        SignAlgorithm::SlhDsaShake256f => slh_dsa_sign::<slh_dsa::Shake256f>(sk, msg),
         SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 => falcon_sign(sk, msg),
     }
 }
@@ -145,15 +150,20 @@ pub fn sign_deterministic_dangerous(sk: &SigningKey, msg: &[u8]) -> Result<Signa
     }
 }
 
-/// Hedged (randomized) signing. For ML-DSA this is what [`sign`] has done since 2026-08-19; the
-/// function stays for compatibility and to make the choice explicit. Other algorithms delegate
-/// to [`sign`].
+/// Hedged (randomized) signing, with fresh OS randomness for every signature. For ML-DSA this
+/// is what [`sign`] has done since 2026-08-19; the function stays for compatibility and to make
+/// the choice explicit. For SLH-DSA it is the hedged variant of FIPS 205: `opt_rand` is n fresh
+/// bytes, where [`sign`] is deterministic. Falcon delegates to [`sign`], which is randomized by
+/// construction.
 pub fn sign_randomized(sk: &SigningKey, msg: &[u8]) -> Result<Signature, PqcError> {
     match sk.algorithm {
-        SignAlgorithm::MlDsa44 => ml_dsa_sign_randomized::<ml_dsa::MlDsa44>(sk, msg),
-        SignAlgorithm::MlDsa65 => ml_dsa_sign_randomized::<ml_dsa::MlDsa65>(sk, msg),
-        SignAlgorithm::MlDsa87 => ml_dsa_sign_randomized::<ml_dsa::MlDsa87>(sk, msg),
-        _ => sign(sk, msg),
+        SignAlgorithm::MlDsa44 => ml_dsa_sign_randomized::<ml_dsa::MlDsa44>(sk, msg, b""),
+        SignAlgorithm::MlDsa65 => ml_dsa_sign_randomized::<ml_dsa::MlDsa65>(sk, msg, b""),
+        SignAlgorithm::MlDsa87 => ml_dsa_sign_randomized::<ml_dsa::MlDsa87>(sk, msg, b""),
+        SignAlgorithm::SlhDsaShake128f => slh_dsa_sign_hedged::<slh_dsa::Shake128f>(sk, msg, b""),
+        SignAlgorithm::SlhDsaShake256s => slh_dsa_sign_hedged::<slh_dsa::Shake256s>(sk, msg, b""),
+        SignAlgorithm::SlhDsaShake256f => slh_dsa_sign_hedged::<slh_dsa::Shake256f>(sk, msg, b""),
+        SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 => sign(sk, msg),
     }
 }
 
@@ -197,11 +207,12 @@ fn ml_dsa_signing_key<P: ml_dsa::MlDsaParams>(
 fn ml_dsa_sign_randomized<P: ml_dsa::MlDsaParams>(
     sk: &SigningKey,
     msg: &[u8],
+    ctx: &[u8],
 ) -> Result<Signature, PqcError> {
     let signing_key = ml_dsa_signing_key::<P>(sk)?;
     let mut rng = OsGetRandom;
     let sig = signing_key
-        .sign_randomized(msg, b"", &mut rng)
+        .sign_randomized(msg, ctx, &mut rng)
         .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
     Ok(Signature {
         algorithm: sk.algorithm,
@@ -210,13 +221,70 @@ fn ml_dsa_sign_randomized<P: ml_dsa::MlDsaParams>(
 }
 
 pub fn verify(vk: &VerificationKey, msg: &[u8], sig: &Signature) -> Result<bool, PqcError> {
+    verify_with_context(vk, msg, sig, b"")
+}
+
+/// The longest context string FIPS 204 and FIPS 205 allow, in bytes.
+pub const MAX_CONTEXT_LEN: usize = 255;
+
+/// Sign under a context string: the domain separation of FIPS 204 and FIPS 205 (pure signing,
+/// external interface). A signature made under one context verifies only under that context,
+/// so one key can sign several kinds of message without one standing in for another.
+///
+/// Hedged, like [`sign_randomized`]: ML-DSA and SLH-DSA take fresh OS randomness for every
+/// signature. With an empty context the signatures are ones [`verify`] accepts.
+///
+/// A context longer than [`MAX_CONTEXT_LEN`] is an error. Falcon has no context string in this
+/// crate: a non-empty context is an error, and an empty one signs like [`sign`].
+pub fn sign_with_context(sk: &SigningKey, msg: &[u8], ctx: &[u8]) -> Result<Signature, PqcError> {
+    if ctx.len() > MAX_CONTEXT_LEN {
+        return Err(PqcError::Sign(format!(
+            "context of {} bytes; at most {MAX_CONTEXT_LEN}",
+            ctx.len()
+        )));
+    }
+    match sk.algorithm {
+        SignAlgorithm::MlDsa44 => ml_dsa_sign_randomized::<ml_dsa::MlDsa44>(sk, msg, ctx),
+        SignAlgorithm::MlDsa65 => ml_dsa_sign_randomized::<ml_dsa::MlDsa65>(sk, msg, ctx),
+        SignAlgorithm::MlDsa87 => ml_dsa_sign_randomized::<ml_dsa::MlDsa87>(sk, msg, ctx),
+        SignAlgorithm::SlhDsaShake128f => slh_dsa_sign_hedged::<slh_dsa::Shake128f>(sk, msg, ctx),
+        SignAlgorithm::SlhDsaShake256s => slh_dsa_sign_hedged::<slh_dsa::Shake256s>(sk, msg, ctx),
+        SignAlgorithm::SlhDsaShake256f => slh_dsa_sign_hedged::<slh_dsa::Shake256f>(sk, msg, ctx),
+        SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 if ctx.is_empty() => sign(sk, msg),
+        SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 => Err(PqcError::Sign(
+            "Falcon has no context string in this crate".into(),
+        )),
+    }
+}
+
+/// Verify a signature made under `ctx` (see [`sign_with_context`]). With an empty context this
+/// is [`verify`]. A context longer than [`MAX_CONTEXT_LEN`] is an error, and so is a non-empty
+/// context with Falcon.
+pub fn verify_with_context(
+    vk: &VerificationKey,
+    msg: &[u8],
+    sig: &Signature,
+    ctx: &[u8],
+) -> Result<bool, PqcError> {
+    if ctx.len() > MAX_CONTEXT_LEN {
+        return Err(PqcError::Verify(format!(
+            "context of {} bytes; at most {MAX_CONTEXT_LEN}",
+            ctx.len()
+        )));
+    }
     match vk.algorithm {
-        SignAlgorithm::MlDsa44 => ml_dsa_verify::<ml_dsa::MlDsa44>(vk, msg, sig),
-        SignAlgorithm::MlDsa65 => ml_dsa_verify::<ml_dsa::MlDsa65>(vk, msg, sig),
-        SignAlgorithm::MlDsa87 => ml_dsa_verify::<ml_dsa::MlDsa87>(vk, msg, sig),
-        SignAlgorithm::SlhDsaShake128f => slh_dsa_verify::<slh_dsa::Shake128f>(vk, msg, sig),
-        SignAlgorithm::SlhDsaShake256s => slh_dsa_verify::<slh_dsa::Shake256s>(vk, msg, sig),
-        SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 => falcon_verify(vk, msg, sig),
+        SignAlgorithm::MlDsa44 => ml_dsa_verify::<ml_dsa::MlDsa44>(vk, msg, sig, ctx),
+        SignAlgorithm::MlDsa65 => ml_dsa_verify::<ml_dsa::MlDsa65>(vk, msg, sig, ctx),
+        SignAlgorithm::MlDsa87 => ml_dsa_verify::<ml_dsa::MlDsa87>(vk, msg, sig, ctx),
+        SignAlgorithm::SlhDsaShake128f => slh_dsa_verify::<slh_dsa::Shake128f>(vk, msg, sig, ctx),
+        SignAlgorithm::SlhDsaShake256s => slh_dsa_verify::<slh_dsa::Shake256s>(vk, msg, sig, ctx),
+        SignAlgorithm::SlhDsaShake256f => slh_dsa_verify::<slh_dsa::Shake256f>(vk, msg, sig, ctx),
+        SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 if ctx.is_empty() => {
+            falcon_verify(vk, msg, sig)
+        }
+        SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 => Err(PqcError::Verify(
+            "Falcon has no context string in this crate".into(),
+        )),
     }
 }
 
@@ -261,6 +329,7 @@ fn ml_dsa_verify<P: ml_dsa::MlDsaParams>(
     vk: &VerificationKey,
     msg: &[u8],
     sig: &Signature,
+    ctx: &[u8],
 ) -> Result<bool, PqcError> {
     // Reconstruct VK from encoded bytes
     let vk_bytes: &[u8] = &vk.bytes;
@@ -274,7 +343,7 @@ fn ml_dsa_verify<P: ml_dsa::MlDsaParams>(
     let enc_vk = ml_dsa::EncodedVerifyingKey::<P>::try_from(vk_bytes)
         .map_err(|_| PqcError::Verify("invalid verifying key size".into()))?;
     let verifying_key = ml_dsa::VerifyingKey::<P>::decode(&enc_vk);
-    Ok(verifying_key.verify_with_context(msg, b"", &decoded_sig))
+    Ok(verifying_key.verify_with_context(msg, ctx, &decoded_sig))
 }
 
 // ── SLH-DSA (FIPS 205) ─────────────────────────────────────────────────────
@@ -303,14 +372,42 @@ fn slh_dsa_keygen<P: slh_dsa::ParameterSet>(
     })
 }
 
+/// Deterministic SLH-DSA signing with an empty context: what [`sign`] does.
 fn slh_dsa_sign<P: slh_dsa::ParameterSet>(
     sk: &SigningKey,
     msg: &[u8],
 ) -> Result<Signature, PqcError> {
+    slh_dsa_sign_with::<P>(sk, msg, b"", false)
+}
+
+/// Hedged SLH-DSA signing: `opt_rand` is n fresh bytes from the OS, cleared on drop.
+fn slh_dsa_sign_hedged<P: slh_dsa::ParameterSet>(
+    sk: &SigningKey,
+    msg: &[u8],
+    ctx: &[u8],
+) -> Result<Signature, PqcError> {
+    slh_dsa_sign_with::<P>(sk, msg, ctx, true)
+}
+
+fn slh_dsa_sign_with<P: slh_dsa::ParameterSet>(
+    sk: &SigningKey,
+    msg: &[u8],
+    ctx: &[u8],
+    hedged: bool,
+) -> Result<Signature, PqcError> {
     let signing_key = slh_dsa::SigningKey::<P>::try_from(sk.bytes.as_slice())
         .map_err(|_| PqcError::Sign("invalid signing key".into()))?;
+    // A key that parses is 4n bytes (SK.seed, SK.prf, PK.seed, PK.root), so n comes from the
+    // key itself and `opt_rand` always has the length FIPS 205 requires for its parameter set.
+    let opt_rand = if hedged {
+        let mut r = Zeroizing::new(vec![0u8; sk.bytes.len() / 4]);
+        getrandom::fill(r.as_mut_slice()).map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
+        Some(r)
+    } else {
+        None
+    };
     let sig = signing_key
-        .try_sign_with_context(msg, b"", None)
+        .try_sign_with_context(msg, ctx, opt_rand.as_deref().map(Vec::as_slice))
         .map_err(|e| PqcError::Sign(format!("{:?}", e)))?;
     Ok(Signature {
         algorithm: sk.algorithm,
@@ -322,12 +419,13 @@ fn slh_dsa_verify<P: slh_dsa::ParameterSet>(
     vk: &VerificationKey,
     msg: &[u8],
     sig: &Signature,
+    ctx: &[u8],
 ) -> Result<bool, PqcError> {
     let verifying_key = slh_dsa::VerifyingKey::<P>::try_from(vk.bytes.as_slice())
         .map_err(|_| PqcError::Verify("invalid verifying key".into()))?;
     let signature = slh_dsa::Signature::<P>::try_from(sig.bytes.as_slice())
         .map_err(|_| PqcError::Verify("invalid signature".into()))?;
-    match verifying_key.try_verify_with_context(msg, b"", &signature) {
+    match verifying_key.try_verify_with_context(msg, ctx, &signature) {
         Ok(()) => Ok(true),
         Err(_) => Ok(false),
     }
@@ -517,6 +615,132 @@ mod tests {
         assert!(verify(&kp.vk, b"SLH-DSA-256s", &sig).unwrap());
     }
     #[test]
+    fn test_slh_dsa_shake_256f() {
+        let kp = keypair(SignAlgorithm::SlhDsaShake256f).unwrap();
+        assert_eq!((kp.sk.bytes.len(), kp.vk.bytes.len()), (128, 64));
+        let sig = sign(&kp.sk, b"SLH-DSA-256f").unwrap();
+        assert_eq!(sig.bytes.len(), 49_856);
+        assert!(verify(&kp.vk, b"SLH-DSA-256f", &sig).unwrap());
+        assert!(!verify(&kp.vk, b"SLH-DSA-256F", &sig).unwrap());
+    }
+    /// A signature made under one context verifies only under that context, never under
+    /// another, an empty one or plain `verify`; plain `sign` is the empty context.
+    #[test]
+    fn contexts_separate_signatures() {
+        for alg in [
+            SignAlgorithm::MlDsa44,
+            SignAlgorithm::MlDsa65,
+            SignAlgorithm::MlDsa87,
+            SignAlgorithm::SlhDsaShake128f,
+            SignAlgorithm::SlhDsaShake256f,
+        ] {
+            let kp = keypair(alg).unwrap();
+            let msg = b"block header hash";
+            let s = sign_with_context(&kp.sk, msg, b"qh-seal-v1").unwrap();
+            assert!(
+                verify_with_context(&kp.vk, msg, &s, b"qh-seal-v1").unwrap(),
+                "{alg:?}"
+            );
+            assert!(
+                !verify_with_context(&kp.vk, msg, &s, b"qh-vote-v1").unwrap(),
+                "{alg:?}"
+            );
+            assert!(
+                !verify_with_context(&kp.vk, msg, &s, b"").unwrap(),
+                "{alg:?}"
+            );
+            assert!(!verify(&kp.vk, msg, &s).unwrap(), "{alg:?}");
+            let plain = sign(&kp.sk, msg).unwrap();
+            assert!(
+                verify_with_context(&kp.vk, msg, &plain, b"").unwrap(),
+                "{alg:?}"
+            );
+            assert!(
+                !verify_with_context(&kp.vk, msg, &plain, b"qh-seal-v1").unwrap(),
+                "{alg:?}"
+            );
+        }
+    }
+    #[test]
+    fn context_longer_than_255_bytes_is_an_error() {
+        let kp = keypair(SignAlgorithm::SlhDsaShake128f).unwrap();
+        let longest = [7u8; MAX_CONTEXT_LEN];
+        let s = sign_with_context(&kp.sk, b"m", &longest).unwrap();
+        assert!(verify_with_context(&kp.vk, b"m", &s, &longest).unwrap());
+        let too_long = [7u8; MAX_CONTEXT_LEN + 1];
+        assert!(sign_with_context(&kp.sk, b"m", &too_long).is_err());
+        assert!(verify_with_context(&kp.vk, b"m", &s, &too_long).is_err());
+    }
+    /// SLH-DSA: `sign` is deterministic, `sign_randomized` and `sign_with_context` are hedged
+    /// (two signatures of one message differ) and still verify. Policy for these unit tests: a
+    /// test that signs a SHAKE-256 set more than twice runs it in release builds only (a
+    /// SHAKE-256f signature takes seconds in a debug build, a SHAKE-256s one about a minute).
+    /// This one signs six times per set; debug builds cover the shared code path with
+    /// SHAKE-128f.
+    #[test]
+    fn slh_dsa_hedged_signing() {
+        let mut algs = vec![SignAlgorithm::SlhDsaShake128f];
+        if !cfg!(debug_assertions) {
+            algs.extend([
+                SignAlgorithm::SlhDsaShake256s,
+                SignAlgorithm::SlhDsaShake256f,
+            ]);
+        }
+        for alg in algs {
+            let kp = keypair(alg).unwrap();
+            let msg = b"entropy message";
+            assert_eq!(
+                sign(&kp.sk, msg).unwrap().bytes,
+                sign(&kp.sk, msg).unwrap().bytes
+            );
+            let (a, b) = (
+                sign_randomized(&kp.sk, msg).unwrap(),
+                sign_randomized(&kp.sk, msg).unwrap(),
+            );
+            assert_ne!(a.bytes, b.bytes, "{alg:?}");
+            assert!(verify(&kp.vk, msg, &a).unwrap() && verify(&kp.vk, msg, &b).unwrap());
+            let (c, d) = (
+                sign_with_context(&kp.sk, msg, b"ctx").unwrap(),
+                sign_with_context(&kp.sk, msg, b"ctx").unwrap(),
+            );
+            assert_ne!(c.bytes, d.bytes, "{alg:?}");
+            assert!(verify_with_context(&kp.vk, msg, &c, b"ctx").unwrap());
+            assert!(verify_with_context(&kp.vk, msg, &d, b"ctx").unwrap());
+        }
+    }
+    /// Falcon has no context string here. A non-empty context is refused with that reason (not
+    /// a key or signature parse error); an empty one signs and verifies like `sign`/`verify`.
+    #[test]
+    fn falcon_refuses_a_context() {
+        let refused = |e: PqcError| format!("{e}").contains("no context string");
+        let vk = VerificationKey {
+            algorithm: SignAlgorithm::Falcon512,
+            bytes: vec![0; 897],
+        };
+        let sig = Signature {
+            algorithm: SignAlgorithm::Falcon512,
+            bytes: vec![0; 666],
+        };
+        assert!(refused(
+            verify_with_context(&vk, b"m", &sig, b"ctx").expect_err("refused")
+        ));
+        if !FALCON_SIGNING_AVAILABLE {
+            return;
+        }
+        let kp = keypair(SignAlgorithm::Falcon512).unwrap();
+        assert!(refused(
+            sign_with_context(&kp.sk, b"m", b"ctx")
+                .err()
+                .expect("refused")
+        ));
+        let s = sign_with_context(&kp.sk, b"m", b"").unwrap();
+        assert!(verify_with_context(&kp.vk, b"m", &s, b"").unwrap());
+        assert!(verify(&kp.vk, b"m", &s).unwrap());
+        assert!(refused(
+            verify_with_context(&kp.vk, b"m", &s, b"ctx").expect_err("refused")
+        ));
+    }
+    #[test]
     fn test_slh_dsa_tampered() {
         let kp = keypair(SignAlgorithm::SlhDsaShake128f).unwrap();
         let sig = sign(&kp.sk, b"original").unwrap();
@@ -703,6 +927,7 @@ mod tests {
         zeroize_on_drop::<ml_dsa::KeyPair<ml_dsa::MlDsa65>>();
         zeroize_on_drop::<slh_dsa::SigningKey<slh_dsa::Shake128f>>();
         zeroize_on_drop::<slh_dsa::SigningKey<slh_dsa::Shake256s>>();
+        zeroize_on_drop::<slh_dsa::SigningKey<slh_dsa::Shake256f>>();
     }
 
     #[test]

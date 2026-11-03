@@ -187,12 +187,14 @@ theorem deterministic_sign_consistent
 inductive SlhDsaVariant where
   | Shake128f : SlhDsaVariant  -- fast, n=16
   | Shake256s : SlhDsaVariant  -- small sigs, n=32
+  | Shake256f : SlhDsaVariant  -- fast, n=32
 deriving DecidableEq
 
 /-- Security parameter n for each variant -/
 def SlhDsaVariant.n : SlhDsaVariant → Nat
   | .Shake128f => 16
   | .Shake256s => 32
+  | .Shake256f => 32
 
 /-- SLH-DSA signing key is 4n bytes -/
 def SlhDsaVariant.skSize (v : SlhDsaVariant) : Nat := 4 * v.n
@@ -215,8 +217,9 @@ def SlhDsaVariant.seedSize (v : SlhDsaVariant) : Nat := 3 * v.n
 
 theorem slhdsa_seed_size_correct :
     SlhDsaVariant.seedSize .Shake128f = 48 ∧
-    SlhDsaVariant.seedSize .Shake256s = 96 := by
-  constructor <;> rfl
+    SlhDsaVariant.seedSize .Shake256s = 96 ∧
+    SlhDsaVariant.seedSize .Shake256f = 96 := by
+  exact ⟨rfl, rfl, rfl⟩
 
 -- ════════════════════════════════════════════════════════════════════════════
 -- Section 5: Falcon (FIPS 206) Properties
@@ -259,6 +262,7 @@ inductive PqcSignAlgorithm where
   | SlhDsaShake256s : PqcSignAlgorithm
   | Falcon512 : PqcSignAlgorithm
   | Falcon1024 : PqcSignAlgorithm
+  | SlhDsaShake256f : PqcSignAlgorithm
 deriving DecidableEq
 
 /-- All KEM algorithms supported by paraxiom-pqc -/
@@ -271,7 +275,8 @@ deriving DecidableEq
 /-- Theorem 16: Algorithm dispatch is total — every variant is handled -/
 theorem sign_dispatch_total :
     ∀ (a : PqcSignAlgorithm), a = .MlDsa44 ∨ a = .MlDsa65 ∨ a = .MlDsa87 ∨
-      a = .SlhDsaShake128f ∨ a = .SlhDsaShake256s ∨ a = .Falcon512 ∨ a = .Falcon1024 := by
+      a = .SlhDsaShake128f ∨ a = .SlhDsaShake256s ∨ a = .Falcon512 ∨ a = .Falcon1024 ∨
+      a = .SlhDsaShake256f := by
   intro a; cases a <;> simp
 
 /-- Theorem 17: KEM dispatch is total -/
@@ -286,6 +291,7 @@ def PqcSignAlgorithm.securityCategory : PqcSignAlgorithm → Nat
   | .MlDsa87 => 5
   | .SlhDsaShake128f => 1
   | .SlhDsaShake256s => 5
+  | .SlhDsaShake256f => 5
   | .Falcon512 => 1
   | .Falcon1024 => 5
 
@@ -441,7 +447,7 @@ deriving DecidableEq
 /-- Map from algorithm to FIPS standard -/
 def PqcSignAlgorithm.fipsStandard : PqcSignAlgorithm → FIPSStandard
   | .MlDsa44 | .MlDsa65 | .MlDsa87 => .FIPS204
-  | .SlhDsaShake128f | .SlhDsaShake256s => .FIPS205
+  | .SlhDsaShake128f | .SlhDsaShake256s | .SlhDsaShake256f => .FIPS205
   | .Falcon512 | .Falcon1024 => .FIPS206
 
 def PqcKemAlgorithm.fipsStandard : PqcKemAlgorithm → FIPSStandard
@@ -455,12 +461,12 @@ theorem all_fips_standards_covered :
     (∃ a : PqcSignAlgorithm, a.fipsStandard = .FIPS206) := by
   exact ⟨⟨.MlKem512, rfl⟩, ⟨.MlDsa44, rfl⟩, ⟨.SlhDsaShake128f, rfl⟩, ⟨.Falcon512, rfl⟩⟩
 
-/-- Theorem 29: paraxiom-pqc covers 10 algorithm variants total -/
+/-- Theorem 29: paraxiom-pqc covers 11 algorithm variants total -/
 theorem total_algorithm_count :
     (List.length [PqcSignAlgorithm.MlDsa44, .MlDsa65, .MlDsa87,
-                  .SlhDsaShake128f, .SlhDsaShake256s,
+                  .SlhDsaShake128f, .SlhDsaShake256s, .SlhDsaShake256f,
                   .Falcon512, .Falcon1024]) +
-    (List.length [PqcKemAlgorithm.MlKem512, .MlKem768, .MlKem1024]) = 10 := by
+    (List.length [PqcKemAlgorithm.MlKem512, .MlKem768, .MlKem1024]) = 11 := by
   native_decide
 
 /-- Theorem 30: Every algorithm maps to exactly one FIPS standard -/

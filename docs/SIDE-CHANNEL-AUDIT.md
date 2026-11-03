@@ -75,7 +75,9 @@ answers), but a stable per-key timing fingerprint is a measurable leak that shou
 FIPS 204 §3.4 allows **hedged** signing, with fresh randomness for each signature. Since
 2026-08-19 `paraxiom_pqc::sign::sign` signs ML-DSA this way (through ml-dsa's `sign_randomized`,
 behind its `rand_core` feature); `sign_randomized` is the same path. Falcon is randomized by
-construction and SLH-DSA delegates to `sign`.
+construction. SLH-DSA is deterministic under `sign`; since 2026-11-03 `sign_randomized` and
+`sign_with_context` sign it hedged (FIPS 205 `opt_rand`). No timing measurement in this document
+covers SLH-DSA.
 
 Effect: the retry count is random for each signature, so a fixed key's signing time **varies**
 instead of being a fingerprint. Measured: the dudect statistic drops from **|t| 112.8 to 4.4** on
