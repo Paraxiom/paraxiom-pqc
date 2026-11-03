@@ -299,6 +299,7 @@ mod signatures {
             SignAlgorithm::MlDsa87,
             SignAlgorithm::SlhDsaShake128f,
             SignAlgorithm::SlhDsaShake256s,
+            SignAlgorithm::SlhDsaShake256f,
         ];
         if sign::FALCON_SIGNING_AVAILABLE {
             v.extend([SignAlgorithm::Falcon512, SignAlgorithm::Falcon1024]);
@@ -308,6 +309,16 @@ mod signatures {
 
     fn ml_dsa_alg() -> impl Strategy<Value = SignAlgorithm> {
         prop::sample::select(ML_DSA.to_vec())
+    }
+
+    /// SLH-DSA-SHAKE-256s takes about a minute per signature in a debug build and SHAKE-256f
+    /// several seconds; tests that sign once per case skip them there, and release runs them.
+    fn slow_in_debug(alg: SignAlgorithm) -> bool {
+        cfg!(debug_assertions)
+            && matches!(
+                alg,
+                SignAlgorithm::SlhDsaShake256s | SignAlgorithm::SlhDsaShake256f
+            )
     }
 
     fn any_alg() -> impl Strategy<Value = SignAlgorithm> {
@@ -521,8 +532,8 @@ mod signatures {
         /// the same.
         #[test]
         fn sign_verify_round_trip(alg in any_alg(), msg in prop::collection::vec(any::<u8>(), 0..300)) {
-            if alg == SignAlgorithm::SlhDsaShake256s && cfg!(debug_assertions) {
-                return Ok(()); // a minute per signature in debug builds; release runs it
+            if slow_in_debug(alg) {
+                return Ok(()); // seconds to a minute per signature in debug builds; release runs it
             }
             let f = fixture(alg);
             let sk = SigningKey { algorithm: alg, bytes: f.sk.bytes.clone() };
@@ -572,6 +583,7 @@ mod signatures {
             alg in prop::sample::select(vec![
                 SignAlgorithm::MlDsa44, SignAlgorithm::MlDsa65, SignAlgorithm::MlDsa87,
                 SignAlgorithm::SlhDsaShake128f, SignAlgorithm::SlhDsaShake256s,
+                SignAlgorithm::SlhDsaShake256f,
                 SignAlgorithm::Falcon512, SignAlgorithm::Falcon1024,
             ]),
             exact_len in any::<bool>(),
@@ -594,6 +606,7 @@ mod signatures {
             alg in prop::sample::select(vec![
                 SignAlgorithm::MlDsa44, SignAlgorithm::MlDsa65, SignAlgorithm::MlDsa87,
                 SignAlgorithm::SlhDsaShake128f, SignAlgorithm::SlhDsaShake256s,
+                SignAlgorithm::SlhDsaShake256f,
                 SignAlgorithm::Falcon512, SignAlgorithm::Falcon1024,
             ]),
             bytes in prop::collection::vec(any::<u8>(), 0..3000),
@@ -601,7 +614,7 @@ mod signatures {
             let right = match alg {
                 SignAlgorithm::MlDsa44 | SignAlgorithm::MlDsa65 | SignAlgorithm::MlDsa87 => 32,
                 SignAlgorithm::SlhDsaShake128f => 64,
-                SignAlgorithm::SlhDsaShake256s => 128,
+                SignAlgorithm::SlhDsaShake256s | SignAlgorithm::SlhDsaShake256f => 128,
                 SignAlgorithm::Falcon512 => 1281,
                 SignAlgorithm::Falcon1024 => 2305,
             };
@@ -621,6 +634,7 @@ mod signatures {
             SignAlgorithm::MlDsa87 => (2592, 4627),
             SignAlgorithm::SlhDsaShake128f => (32, 17088),
             SignAlgorithm::SlhDsaShake256s => (64, 29792),
+            SignAlgorithm::SlhDsaShake256f => (64, 49856),
             SignAlgorithm::Falcon512 => (897, 809),
             SignAlgorithm::Falcon1024 => (1793, 1577),
         }
@@ -645,6 +659,7 @@ mod signatures {
                 SignAlgorithm::MlDsa87 => ml_dsa_codec::<ml_dsa::MlDsa87>(f),
                 SignAlgorithm::SlhDsaShake128f => slh_dsa_codec::<slh_dsa::Shake128f>(f),
                 SignAlgorithm::SlhDsaShake256s => slh_dsa_codec::<slh_dsa::Shake256s>(f),
+                SignAlgorithm::SlhDsaShake256f => slh_dsa_codec::<slh_dsa::Shake256f>(f),
                 SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024 => {
                     let kp = falcon::safe_api::FnDsaKeyPair::from_private_key(&f.sk.bytes).unwrap();
                     assert_eq!(kp.private_key(), f.sk.bytes.as_slice());
@@ -695,14 +710,16 @@ mod signatures {
     #[test]
     fn determinism_matches_the_documentation() {
         for f in fixtures() {
-            if f.alg == SignAlgorithm::SlhDsaShake256s && cfg!(debug_assertions) {
+            if slow_in_debug(f.alg) {
                 continue;
             }
             let a = sign::sign(&f.sk, &f.msg).unwrap().bytes;
             let b = sign::sign(&f.sk, &f.msg).unwrap().bytes;
             let slh = matches!(
                 f.alg,
-                SignAlgorithm::SlhDsaShake128f | SignAlgorithm::SlhDsaShake256s
+                SignAlgorithm::SlhDsaShake128f
+                    | SignAlgorithm::SlhDsaShake256s
+                    | SignAlgorithm::SlhDsaShake256f
             );
             let falcon = matches!(f.alg, SignAlgorithm::Falcon512 | SignAlgorithm::Falcon1024);
             assert_eq!(a == b, slh, "sign {:?}", f.alg);
@@ -793,7 +810,7 @@ mod signatures {
         #[test]
         fn arbitrary_signing_key_of_the_right_length_does_not_panic(
             alg in prop::sample::select(
-                signing_algs().into_iter().filter(|a| *a != SignAlgorithm::SlhDsaShake256s).collect::<Vec<_>>()
+                signing_algs().into_iter().filter(|a| !matches!(a, SignAlgorithm::SlhDsaShake256s | SignAlgorithm::SlhDsaShake256f)).collect::<Vec<_>>()
             ),
             noise in prop::collection::vec(any::<u8>(), 2305),
         ) {

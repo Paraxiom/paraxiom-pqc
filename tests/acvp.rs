@@ -10,7 +10,8 @@
 //! arguments the wrapper passes.
 //!
 //! The SLH-DSA-SHAKE-256s signing vectors take minutes in a debug build and are `#[ignore]`d;
-//! run them with `cargo test --release --test acvp -- --ignored`.
+//! run them with `cargo test --release --test acvp -- --ignored`. The SHAKE-256f ones take
+//! seconds and run in every build.
 
 use paraxiom_pqc::kem::{self, Ciphertext, DecapsulationKey, EncapsulationKey, KemAlgorithm};
 use serde_json::Value;
@@ -565,6 +566,24 @@ mod signatures {
                 },
             );
             let accepted = matches!(wrapper, Ok(true));
+            let with_ctx = sign::verify_with_context(
+                &VerificationKey {
+                    algorithm: alg,
+                    bytes: unhex(&t["pk"]),
+                },
+                &unhex(&t["message"]),
+                &Signature {
+                    algorithm: alg,
+                    bytes: unhex(&t["signature"]),
+                },
+                &unhex(&t["context"]),
+            );
+            assert_eq!(
+                matches!(with_ctx, Ok(true)),
+                expected,
+                "tc {tc}: sign::verify_with_context, {}",
+                t["reason"]
+            );
             if unhex(&t["context"]).is_empty() {
                 through_wrapper += 1;
                 assert_eq!(accepted, expected, "tc {tc}: sign::verify, {}", t["reason"]);
@@ -584,6 +603,7 @@ mod signatures {
         match set {
             "SLH-DSA-SHAKE-128f" => Some(SignAlgorithm::SlhDsaShake128f),
             "SLH-DSA-SHAKE-256s" => Some(SignAlgorithm::SlhDsaShake256s),
+            "SLH-DSA-SHAKE-256f" => Some(SignAlgorithm::SlhDsaShake256f),
             _ => None,
         }
     }
@@ -609,7 +629,9 @@ mod signatures {
             let alg = slh_alg(g["parameterSet"].as_str().unwrap()).unwrap();
             let sk = match alg {
                 SignAlgorithm::SlhDsaShake128f => check::<slh_dsa::Shake128f>(t),
-                _ => check::<slh_dsa::Shake256s>(t),
+                SignAlgorithm::SlhDsaShake256s => check::<slh_dsa::Shake256s>(t),
+                SignAlgorithm::SlhDsaShake256f => check::<slh_dsa::Shake256f>(t),
+                _ => unreachable!(),
             };
             let (nist_sk, nist_pk) = (unhex(&t["sk"]), unhex(&t["pk"]));
             assert_eq!(sk, nist_sk, "tc {}: sk", t["tcId"]);
@@ -640,7 +662,7 @@ mod signatures {
                 );
             }
         });
-        assert_eq!((n, wrapper), (20, 2));
+        assert_eq!((n, wrapper), (30, 2));
     }
 
     /// sigGen, deterministic, external interface, pure, for one parameter set. With an empty
@@ -670,9 +692,23 @@ mod signatures {
             let tc = &t["tcId"];
             let got = match alg {
                 SignAlgorithm::SlhDsaShake128f => backend::<slh_dsa::Shake128f>(&sk, &msg, &ctx),
-                _ => backend::<slh_dsa::Shake256s>(&sk, &msg, &ctx),
+                SignAlgorithm::SlhDsaShake256s => backend::<slh_dsa::Shake256s>(&sk, &msg, &ctx),
+                SignAlgorithm::SlhDsaShake256f => backend::<slh_dsa::Shake256f>(&sk, &msg, &ctx),
+                _ => unreachable!(),
             };
             assert_eq!(got, sig, "tc {tc}: backend");
+            let nist_sig = Signature {
+                algorithm: alg,
+                bytes: sig.clone(),
+            };
+            let vk_ctx = VerificationKey {
+                algorithm: alg,
+                bytes: pk.clone(),
+            };
+            assert!(
+                sign::verify_with_context(&vk_ctx, &msg, &nist_sig, &ctx).unwrap(),
+                "tc {tc}: sign::verify_with_context"
+            );
             if ctx.is_empty() {
                 let sk_w = SigningKey {
                     algorithm: alg,
@@ -707,6 +743,11 @@ mod signatures {
     #[ignore = "minutes in a debug build; run with --release -- --ignored"]
     fn slh_dsa_shake_256s_siggen_matches_acvp() {
         assert_eq!(slh_dsa_siggen("SLH-DSA-SHAKE-256s"), 3);
+    }
+
+    #[test]
+    fn slh_dsa_shake_256f_siggen_matches_acvp() {
+        assert_eq!(slh_dsa_siggen("SLH-DSA-SHAKE-256f"), 3);
     }
 
     /// sigVer, external interface, pure: the backend accepts exactly NIST's valid signatures
@@ -744,9 +785,33 @@ mod signatures {
                 SignAlgorithm::SlhDsaShake128f => {
                     backend::<slh_dsa::Shake128f>(&pk, &msg, &ctx, &sig)
                 }
-                _ => backend::<slh_dsa::Shake256s>(&pk, &msg, &ctx, &sig),
+                SignAlgorithm::SlhDsaShake256s => {
+                    backend::<slh_dsa::Shake256s>(&pk, &msg, &ctx, &sig)
+                }
+                SignAlgorithm::SlhDsaShake256f => {
+                    backend::<slh_dsa::Shake256f>(&pk, &msg, &ctx, &sig)
+                }
+                _ => unreachable!(),
             };
             assert_eq!(got, expected, "tc {tc}: {}", t["reason"]);
+            let with_ctx = sign::verify_with_context(
+                &VerificationKey {
+                    algorithm: alg,
+                    bytes: pk.clone(),
+                },
+                &msg,
+                &Signature {
+                    algorithm: alg,
+                    bytes: sig.clone(),
+                },
+                &ctx,
+            );
+            assert_eq!(
+                matches!(with_ctx, Ok(true)),
+                expected,
+                "tc {tc}: sign::verify_with_context, {}",
+                t["reason"]
+            );
 
             let wrapper = sign::verify(
                 &VerificationKey {
@@ -770,6 +835,6 @@ mod signatures {
                 );
             }
         });
-        assert_eq!((n, through_wrapper), (14, 2));
+        assert_eq!((n, through_wrapper), (22, 3));
     }
 }

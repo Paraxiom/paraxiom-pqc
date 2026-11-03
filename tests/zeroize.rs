@@ -246,13 +246,17 @@ fn signing_keys_are_cleared_on_drop() {
     }
 }
 
-/// The two schemes the test above leaves out: SLH-DSA-SHAKE-256s and Falcon-1024.
+/// The schemes the test above leaves out: SLH-DSA-SHAKE-256s, SLH-DSA-SHAKE-256f and Falcon-1024.
 #[cfg(feature = "sign")]
 #[test]
 fn remaining_signing_keys_are_cleared_on_drop() {
     use paraxiom_pqc::sign::{self, SignAlgorithm};
 
-    for alg in [SignAlgorithm::SlhDsaShake256s, SignAlgorithm::Falcon1024] {
+    for alg in [
+        SignAlgorithm::SlhDsaShake256s,
+        SignAlgorithm::SlhDsaShake256f,
+        SignAlgorithm::Falcon1024,
+    ] {
         if alg == SignAlgorithm::Falcon1024 && !sign::FALCON_SIGNING_AVAILABLE {
             continue;
         }
@@ -475,6 +479,7 @@ fn slh_dsa_backend_key_secrets_are_gone_when_freed() {
     }
     check::<slh_dsa::Shake128f>(16);
     check::<slh_dsa::Shake256s>(32);
+    check::<slh_dsa::Shake256f>(32);
 }
 
 /// falcon-rs keeps its private key in a `Zeroizing<Vec<u8>>`: the buffer is all zero when freed.

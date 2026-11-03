@@ -8,7 +8,7 @@ One API for four NIST post-quantum algorithms, three of them published standards
 |---|---|---|
 | **FIPS 203** | ML-KEM | 512, 768, 1024 |
 | **FIPS 204** | ML-DSA | 44, 65, 87 |
-| **FIPS 205** | SLH-DSA | SHAKE-128f, SHAKE-256s |
+| **FIPS 205** | SLH-DSA | SHAKE-128f, SHAKE-256s, SHAKE-256f |
 | **FIPS 206** (draft) | Falcon (FN-DSA) | 512, 1024 |
 
 > FN-DSA (FIPS 206) is not yet a final NIST standard. Deployments that need a final signature
@@ -80,6 +80,12 @@ let key = policy.combine(
   (since 0.2.0; before, any degree falcon-rs parses was accepted). Signatures use falcon-rs's FN-DSA
   framing and fixed-length encoding (809 bytes for Falcon-512), which differs from the round 3
   format and may change when FIPS 206 is final.
+- **SLH-DSA.** `sign` signs deterministically; `sign_randomized` and `sign_with_context` sign in
+  the hedged mode of FIPS 205 (`opt_rand` of n fresh bytes).
+- **Context strings.** `sign_with_context` and `verify_with_context` take a context of up to
+  `MAX_CONTEXT_LEN` (255) bytes for ML-DSA and SLH-DSA (FIPS 204 and FIPS 205, pure mode). A
+  signature verifies only under the context it was made with; `verify` is the empty context.
+  Falcon has no context string here: a non-empty one is an error.
 - Timing measurements are in `docs/SIDE-CHANNEL-AUDIT.md`. They cover the timing channel only.
 
 ## Security status
@@ -117,7 +123,7 @@ overflows the default stack in debug builds (it did before 0.2.0 too) and needs
 `RUST_MIN_STACK=16777216`.
 
 `tests/acvp.rs` runs subsets of the NIST ACVP vectors for ML-KEM, ML-DSA and SLH-DSA
-(SHAKE-128f and SHAKE-256s): key generation, encapsulation, decapsulation including modified
+(SHAKE-128f, SHAKE-256s and SHAKE-256f): key generation, encapsulation, decapsulation including modified
 ciphertexts, the encapsulation-key check, deterministic and hedged signing (the fixed-round
 ML-DSA kernel included) and verification. `tests/acvp/README.md` gives the source commit, the
 selection rules and what each test checks. Falcon has no ACVP vectors yet.
@@ -127,11 +133,12 @@ a flipped bit in the signature, message or key refused, a signature refused unde
 key or another scheme's label, ML-KEM implicit rejection (checked against J(z || c) computed
 independently), the FIPS 203 encapsulation-key check, and malformed or wrong-length input giving
 an error rather than a panic. The default case counts are small; set `PROPTEST_CASES` to run
-more. SLH-DSA-SHAKE-256s signing is skipped in debug builds (about a minute per signature);
-`cargo test --release --all-features` runs it.
+more. Property tests that sign once per case skip SLH-DSA-SHAKE-256s and SHAKE-256f in debug
+builds, where one signature takes about a minute and several seconds respectively;
+`cargo test --release --all-features` runs them.
 
 `fuzz/` holds cargo-fuzz targets for the byte-parsing and verification entry points
-(`kem::encapsulate`, `kem::decapsulate`, `sign::verify` for each scheme, `falcon::verify`, the
+(`kem::encapsulate`, `kem::decapsulate`, `sign::verify` for each scheme except SLH-DSA-SHAKE-256f, which has no target yet, `falcon::verify`, the
 signing functions on arbitrary key bytes, and the combiner). It is a separate workspace: libFuzzer
 is C++ and never enters this crate's dependency graph. Run with a nightly toolchain from `fuzz/`:
 `cargo +nightly fuzz run <target> -- -max_total_time=<seconds>`.

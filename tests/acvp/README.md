@@ -28,8 +28,8 @@ python3 tests/acvp/extract.py <directory holding the eight downloaded json-files
 ## What was kept
 
 Only what this crate's API can use: the external, pure interface (no HashML-DSA or
-HashSLH-DSA, no `internal` interface, no external mu) and, for SLH-DSA, the two parameter sets
-the crate offers (SHAKE-128f and SHAKE-256s).
+HashSLH-DSA, no `internal` interface, no external mu) and, for SLH-DSA, the three parameter sets
+the crate offers (SHAKE-128f, SHAKE-256s and, since 2026-11-03, SHAKE-256f).
 
 | File | Groups kept | Test cases kept |
 |---|---|---|
@@ -38,9 +38,9 @@ the crate offers (SHAKE-128f and SHAKE-256s).
 | ML-DSA keyGen | 44, 65, 87 | first 10 per set (30) |
 | ML-DSA sigGen | external, pure, deterministic and hedged | per group: empty context, 255-byte context, then the shortest messages, up to 6 (deterministic) or 4 (hedged) (30) |
 | ML-DSA sigVer | external, pure | per group, the shortest-message case of each reason, plus empty contexts (18) |
-| SLH-DSA keyGen | SHAKE-128f, SHAKE-256s | all (20) |
-| SLH-DSA sigGen | SHAKE-128f, SHAKE-256s; external, pure, deterministic | empty context, 255-byte context, shortest message (6) |
-| SLH-DSA sigVer | SHAKE-128f, SHAKE-256s; external, pure | per group, the shortest-message case of each reason, plus empty contexts (14) |
+| SLH-DSA keyGen | SHAKE-128f, SHAKE-256s, SHAKE-256f | all (30) |
+| SLH-DSA sigGen | SHAKE-128f, SHAKE-256s, SHAKE-256f; external, pure, deterministic | empty context, 255-byte context, shortest message (9) |
+| SLH-DSA sigVer | SHAKE-128f, SHAKE-256s, SHAKE-256f; external, pure | per group, the shortest-message case of each reason, plus empty contexts (22) |
 
 Dropped: ML-KEM `decapsulationKeyCheck` (expanded decapsulation keys only; this crate stores
 the 64-byte seed), and the per-test fields the tests do not read (`deferred`, `hashAlg`, and the

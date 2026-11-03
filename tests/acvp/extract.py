@@ -17,7 +17,7 @@ import sys
 
 COMMIT = "975de31eb83d87039ec88934fdc47d8c312b892d"
 SOURCE = "https://github.com/usnistgov/ACVP-Server/blob/{commit}/gen-val/json-files/{name}/internalProjection.json"
-OUR_SLH_SETS = ("SLH-DSA-SHAKE-128f", "SLH-DSA-SHAKE-256s")
+OUR_SLH_SETS = ("SLH-DSA-SHAKE-128f", "SLH-DSA-SHAKE-256s", "SLH-DSA-SHAKE-256f")
 
 
 def keep(test, fields):
