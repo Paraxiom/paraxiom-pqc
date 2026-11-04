@@ -6,7 +6,7 @@ Power and EM analysis are out of scope here (they need lab instrumentation, the 
 planned CSIT Belfast collaboration). This covers what software can measure on the target
 silicon.
 
-## Status (2026-10-14): which code these numbers describe
+## Status (2026-11-04): which code these numbers describe
 
 These results were committed on 2026-07-10 and describe the code of that date. Since then:
 
@@ -19,6 +19,11 @@ These results were committed on 2026-07-10 and describe the code of that date. S
 - Until 2026-10-14 the "deterministic" row of `examples/dudect_timing.rs` called `sign`, so a
   rerun between 2026-08-19 and that date measured hedged signing in both ML-DSA rows. The
   example now times `sign_deterministic_dangerous` (the kernel) and `sign` (hedged).
+- Since 0.2.1 the crate builds ml-kem 0.3.3 and falcon-rs 0.3.1. The ML-KEM rows below were
+  measured on ml-kem 0.3.0-rc.0, whose CBD sampling read a table at an index made of secret
+  bits; 0.3.3 computes those values arithmetically instead. The Falcon rows were measured on
+  falcon-rs 0.2.3; 0.3.1 checks each signature against the public key before returning it. None
+  of these rows has been measured again on the new versions.
 
 ## Method
 
@@ -112,7 +117,8 @@ aarch64 measurement is still to do.
   remains the classic power/EM concern; no timing signal does not mean no side channel. Falcon
   signing is built only on x86/x86_64 with SSE2 and AArch64 with NEON
   (`sign::FALCON_SIGNING_AVAILABLE`).
-- The backend crates (`ml-kem`, `ml-dsa`, `slh-dsa`, RustCrypto) are pre-release (rc.*).
+- The backend crates `ml-dsa` and `slh-dsa` (RustCrypto) are pre-release (rc.*). `ml-kem` was
+  too (0.3.0-rc.0) when these numbers were taken; since 0.2.1 it is a release (0.3.3).
 
 ## Summary
 

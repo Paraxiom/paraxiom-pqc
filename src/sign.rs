@@ -337,8 +337,9 @@ fn slh_dsa_verify<P: slh_dsa::ParameterSet>(
 
 /// `true` when Falcon key generation and signing are built for this target.
 ///
-/// falcon-rs 0.2.3 computes key generation and signing in native `f64` on secret values
-/// (`src/fpr.rs`) and takes square roots of secret values with `libm::sqrt`. All of it runs as
+/// falcon-rs 0.3.1, built without its opt-in `fpemu` feature (this crate does not turn it on),
+/// computes key generation and signing in native `f64` on secret values (`src/fpr/native.rs`)
+/// and takes square roots of secret values with `libm::sqrt`. All of it runs as
 /// hardware instructions on two families of targets only: x86 and x86_64 with SSE2, and AArch64
 /// with NEON. There the compiler emits FPU instructions for `f64`, and libm 0.2 uses the hardware
 /// square root. On any other target part of it runs in software: the compiler's soft-float

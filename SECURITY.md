@@ -24,9 +24,10 @@ remediation timeline after triage. Coordinated disclosure is appreciated.
 
 `paraxiom-pqc` is a pure-Rust (zero C/C++) library exposing NIST PQC
 algorithms: ML-KEM (FIPS 203), ML-DSA (FIPS 204), SLH-DSA (FIPS 205), and
-Falcon. It depends on upstream pre-release (`rc.*`) implementation crates
-pinned to exact versions; algorithm-level correctness ultimately rests on
-those upstreams.
+Falcon. It depends on upstream implementation crates pinned to exact
+versions, two of them pre-release (`rc.*`): `ml-dsa` and `slh-dsa`, vendored
+with local changes. Algorithm-level correctness ultimately rests on those
+upstreams.
 
 Please report issues in the unified API, key handling, zeroization, or
 misuse-resistance here. Issues in the underlying algorithm implementations may
