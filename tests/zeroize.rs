@@ -13,14 +13,21 @@
 //!   boxed so that they live on the heap, and `QrngRng`); the strings are checked to be present
 //!   before the drop, so the test cannot pass vacuously.
 //!
+//! The allocator can also record the allocations that one thread makes (`recording`). That is how
+//! the ML-KEM test finds the key material: ml-kem 0.3.2 and later keep it in separate heap
+//! allocations, not inside the key struct.
+//!
 //! Controls: a plain `Vec` must be reported as not cleared, and a boxed array holding a secret
-//! string must be reported as still holding it.
+//! string must be reported as still holding it. In the ML-KEM test, a copy of d in an allocation
+//! of the same kind, freed without being cleared, must be found by the recording and reported as
+//! still holding d, and the allocation holding the public half of the key, which ml-kem does not
+//! clear, must be reported as not cleared and as still holding rho.
 
 use paraxiom_pqc::kem::{self, Ciphertext, DecapsulationKey, KemAlgorithm, SharedSecret};
 use proptest::prelude::*;
 use std::alloc::{GlobalAlloc, Layout, System};
-use std::cell::UnsafeCell;
-use std::sync::atomic::{AtomicU8, AtomicUsize, Ordering};
+use std::cell::{Cell, UnsafeCell};
+use std::sync::atomic::{AtomicBool, AtomicU8, AtomicUsize, Ordering};
 use std::sync::Mutex;
 
 struct WatchingAllocator;
@@ -61,10 +68,50 @@ fn passes(bytes: &[u8]) -> bool {
         .all(|(len, buf)| !contains(bytes, &buf[..*len]))
 }
 
+thread_local! {
+    /// True while the allocations of this thread are recorded in `RECORDED`. Const-initialised
+    /// and without a destructor: on targets with native thread-local storage (Linux, macOS and
+    /// Windows among them) reading it from inside the allocator does not allocate.
+    static RECORDING: Cell<bool> = const { Cell::new(false) };
+}
+
+/// Live allocations made by the recording thread, as (address, size); address 0 marks an empty
+/// slot. A slot is emptied when its allocation is freed. Fixed storage, like `NEEDLES`.
+const MAX_RECORDED: usize = 16;
+static RECORDED: [(AtomicUsize, AtomicUsize); MAX_RECORDED] =
+    [const { (AtomicUsize::new(0), AtomicUsize::new(0)) }; MAX_RECORDED];
+/// Set when the recording thread had more live allocations than `RECORDED` holds.
+static RECORDED_OVERFLOW: AtomicBool = AtomicBool::new(false);
+/// One recording at a time.
+static ONE_RECORDING: Mutex<()> = Mutex::new(());
+
+fn record(addr: usize, size: usize) {
+    for (slot, slot_size) in &RECORDED {
+        if slot.load(Ordering::SeqCst) == 0 {
+            slot_size.store(size, Ordering::SeqCst);
+            slot.store(addr, Ordering::SeqCst);
+            return;
+        }
+    }
+    RECORDED_OVERFLOW.store(true, Ordering::SeqCst);
+}
+
+fn unrecord(addr: usize) {
+    for (slot, _) in &RECORDED {
+        if slot.load(Ordering::SeqCst) == addr {
+            slot.store(0, Ordering::SeqCst);
+        }
+    }
+}
+
 unsafe impl GlobalAlloc for WatchingAllocator {
     unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
         // SAFETY: forwarded unchanged to the system allocator.
-        unsafe { System.alloc(layout) }
+        let ptr = unsafe { System.alloc(layout) };
+        if !ptr.is_null() && RECORDING.try_with(Cell::get).unwrap_or(false) {
+            record(ptr as usize, layout.size());
+        }
+        ptr
     }
 
     unsafe fn dealloc(&self, ptr: *mut u8, layout: Layout) {
@@ -74,6 +121,9 @@ unsafe impl GlobalAlloc for WatchingAllocator {
             let bytes = unsafe { std::slice::from_raw_parts(ptr, layout.size()) };
             VERDICT.store(if passes(bytes) { 1 } else { 2 }, Ordering::SeqCst);
             WATCHED.store(0, Ordering::SeqCst);
+        }
+        if !ptr.is_null() {
+            unrecord(ptr as usize);
         }
         // SAFETY: forwarded unchanged to the system allocator that produced `ptr`.
         unsafe { System.dealloc(ptr, layout) }
@@ -126,6 +176,35 @@ fn secrets_gone_when_freed<T>(value: Box<T>, secrets: &[&[u8]]) -> bool {
         );
     }
     watch(value, ptr, secrets)
+}
+
+/// Runs `make` with this thread's allocations recorded. Returns its value and the allocations
+/// made during `make` that are still live, as (address, size). Allocations made by other threads
+/// are not recorded.
+fn recording<T>(make: impl FnOnce() -> T) -> (T, Vec<(usize, usize)>) {
+    let _one = ONE_RECORDING
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
+    // Allocated before the recording starts, so it is not one of the recorded allocations.
+    let mut live = Vec::with_capacity(MAX_RECORDED);
+    for (slot, _) in &RECORDED {
+        slot.store(0, Ordering::SeqCst);
+    }
+    RECORDED_OVERFLOW.store(false, Ordering::SeqCst);
+    RECORDING.with(|r| r.set(true));
+    let value = make();
+    RECORDING.with(|r| r.set(false));
+    for (slot, size) in &RECORDED {
+        let addr = slot.swap(0, Ordering::SeqCst);
+        if addr != 0 {
+            live.push((addr, size.load(Ordering::SeqCst)));
+        }
+    }
+    assert!(
+        !RECORDED_OVERFLOW.load(Ordering::SeqCst),
+        "more live allocations than the recording holds"
+    );
+    (value, live)
 }
 
 const KEM_ALGS: [KemAlgorithm; 3] = [
@@ -383,41 +462,133 @@ fn qrng_key_is_gone_when_freed() {
     );
 }
 
-/// ml-kem's key, as `kem::decapsulate` builds it from the 64-byte seed: d, z and the first
-/// coefficients of each secret polynomial (s_hat, stored as u16) are gone after the drop. The
-/// encapsulation key it also holds is public.
+/// ml-kem's key, as `kem::decapsulate` builds it from the 64-byte seed.
+///
+/// Since ml-kem 0.3.2 the key struct holds pointers: the key material sits in four separate heap
+/// allocations (`module_lattice::MaybeBox`, a `Box` under ml-kem's default `alloc` feature):
+/// - d and z, the two 32-byte halves of the seed;
+/// - the decryption key s_hat: k polynomials in the NTT domain, 256 coefficients each, every
+///   coefficient a `u16` (512 k bytes);
+/// - the encryption key, t_hat and rho (512 k + 32 bytes), which is public.
+///
+/// The test records the allocations `DecapsulationKey::new` makes and checks that exactly these
+/// four are live and hold those bytes (s_hat and rho are taken from a key built from the same
+/// seed before the recording). It then drops keys built the same way, watching one of the four
+/// allocations per key. The three secret ones must be all zero when freed.
+///
+/// Controls: a copy of d in a `Box<B32>` (what `MaybeBox<B32>` holds), made while recording and
+/// freed without being cleared, must be found the same way and reported as not cleared and as
+/// still holding d. The public allocation, which ml-kem does not clear, must be reported as not
+/// cleared and as still holding rho.
 #[test]
-fn ml_kem_backend_key_secrets_are_gone_when_freed() {
+fn ml_kem_backend_key_allocations_are_cleared_when_freed() {
     #[allow(deprecated)]
     use ml_kem::ExpandedKeyEncoding;
-    use ml_kem::KeyInit;
+    use ml_kem::{KeyExport, KeyInit};
+
+    // The four allocations, as indexes into the array that `build` returns.
+    const D: usize = 0;
+    const Z: usize = 1;
+    const S_HAT: usize = 2;
+    const EK: usize = 3;
+
+    // The seed d || z. The copies of the secrets that the test compares against (`seed`, `s_hat`,
+    // `rho`) are on the stack, or on the heap but allocated before any recording, so none of
+    // them can be taken for one of the key's allocations.
+    let seed = ml_kem::Seed::from(std::array::from_fn::<u8, 64, _>(|i| {
+        (i as u8).wrapping_mul(37).wrapping_add(11)
+    }));
+
+    // Control: d in an allocation of the same kind that nothing clears.
+    for all_zero_check in [true, false] {
+        let (copy, live) = recording(|| Box::new(ml_kem::B32::try_from(&seed[..32]).unwrap()));
+        assert_eq!(live.len(), 1, "the control makes one allocation");
+        let (addr, size) = live[0];
+        // SAFETY: a live allocation of `size` bytes, owned by `copy`, which is alive.
+        let bytes = unsafe { std::slice::from_raw_parts(addr as *const u8, size) };
+        assert!(
+            *bytes == seed[..32],
+            "the recording must find the copy of d"
+        );
+        let reported_clean = if all_zero_check {
+            cleared_when_freed(copy, addr as *const u8)
+        } else {
+            watch(copy, addr as *const u8, &[&seed[..32]])
+        };
+        assert!(
+            !reported_clean,
+            "the harness must find d left in an allocation that is not cleared"
+        );
+    }
 
     macro_rules! check {
         ($P:ty, $k:expr) => {{
             let k: usize = $k;
-            let seed: Vec<u8> = (0u8..64)
-                .map(|i| i.wrapping_mul(37).wrapping_add(11))
-                .collect();
-            let key = ml_kem::DecapsulationKey::<$P>::new(
-                &ml_kem::Seed::try_from(seed.as_slice()).unwrap(),
-            );
-            #[allow(deprecated)]
-            let expanded = key.to_expanded_bytes();
-            // ByteDecode_12 of the first 16 coefficients of each of the k polynomials of s_hat.
-            let mut needles: Vec<Vec<u8>> = vec![seed[..32].to_vec(), seed[32..].to_vec()];
-            for poly in 0..k {
-                let enc = &expanded[384 * poly..384 * poly + 24];
-                let mut mem = Vec::new();
-                for t in enc.chunks(3) {
+            let (s_hat, rho) = {
+                let key = ml_kem::DecapsulationKey::<$P>::new(&seed);
+                // s_hat: ByteDecode_12 of the first 384 k bytes of the expanded key.
+                #[allow(deprecated)]
+                let expanded = key.to_expanded_bytes();
+                let mut s_hat = Vec::with_capacity(512 * k);
+                for t in expanded[..384 * k].chunks(3) {
                     let a = u16::from(t[0]) | (u16::from(t[1] & 0x0f) << 8);
                     let b = u16::from(t[1] >> 4) | (u16::from(t[2]) << 4);
-                    mem.extend_from_slice(&a.to_ne_bytes());
-                    mem.extend_from_slice(&b.to_ne_bytes());
+                    s_hat.extend_from_slice(&a.to_ne_bytes());
+                    s_hat.extend_from_slice(&b.to_ne_bytes());
                 }
-                needles.push(mem);
+                // rho: the last 32 bytes of the encapsulation key.
+                let mut rho = [0u8; 32];
+                rho.copy_from_slice(&key.encapsulation_key().to_bytes()[384 * k..]);
+                (s_hat, rho)
+            };
+            assert_eq!(s_hat.len(), 512 * k);
+            assert!(s_hat.iter().any(|b| *b != 0));
+
+            // A key built with its allocations recorded, and the address of each of the four.
+            let build = || {
+                let (key, live) = recording(|| ml_kem::DecapsulationKey::<$P>::new(&seed));
+                let mut found = [0usize; 4];
+                for &(addr, size) in &live {
+                    // SAFETY: a live allocation of `size` bytes, owned by `key`, which is alive.
+                    let bytes = unsafe { std::slice::from_raw_parts(addr as *const u8, size) };
+                    let part = if *bytes == seed[..32] {
+                        D
+                    } else if *bytes == seed[32..] {
+                        Z
+                    } else if *bytes == *s_hat {
+                        S_HAT
+                    } else if size == 512 * k + 32 && contains(bytes, &rho) {
+                        EK
+                    } else {
+                        panic!("k = {k}: an allocation of {size} bytes that the test does not know");
+                    };
+                    assert_eq!(found[part], 0, "k = {k}: two allocations for part {part}");
+                    found[part] = addr;
+                }
+                assert!(
+                    found.iter().all(|addr| *addr != 0),
+                    "k = {k}: not every part is in an allocation of its own"
+                );
+                (key, found)
+            };
+
+            for (part, what) in [(D, "d"), (Z, "z"), (S_HAT, "s_hat")] {
+                let (key, found) = build();
+                assert!(
+                    cleared_when_freed(key, found[part] as *const u8),
+                    "k = {k}: {what} left data on the heap"
+                );
             }
-            let refs: Vec<&[u8]> = needles.iter().map(|n| n.as_slice()).collect();
-            assert!(secrets_gone_when_freed(Box::new(key), &refs), "k = {k}");
+            let (key, found) = build();
+            assert!(
+                !cleared_when_freed(key, found[EK] as *const u8),
+                "k = {k}: the harness must see the public encryption key left in freed memory"
+            );
+            let (key, found) = build();
+            assert!(
+                !watch(key, found[EK] as *const u8, &[&rho]),
+                "k = {k}: the harness must find rho left in freed memory"
+            );
         }};
     }
     check!(ml_kem::MlKem512, 2);

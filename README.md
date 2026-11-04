@@ -84,9 +84,12 @@ let key = policy.combine(
 
 ## Security status
 
-This code has not been externally audited. The algorithm crates (`ml-kem`, `ml-dsa`, `slh-dsa`)
-are pre-release versions whose authors state they have never been independently audited, and
-`ml-dsa` and `slh-dsa` are vendored here with local changes (`vendor/`), published as `paraxiom-ml-dsa` and `paraxiom-slh-dsa`. See `SECURITY.md`.
+This code has not been externally audited. The authors of the algorithm crates (`ml-kem`,
+`ml-dsa`, `slh-dsa`) state that they have never been independently audited, and falcon-rs's
+author states that it has had no independent third-party audit. `ml-dsa` and `slh-dsa` are
+pre-release versions, vendored here with local changes (`vendor/`) and published as
+`paraxiom-ml-dsa` and `paraxiom-slh-dsa`; `ml-kem` is a release (0.3.3) since 0.2.1. See
+`SECURITY.md`.
 
 ## Why This Exists
 

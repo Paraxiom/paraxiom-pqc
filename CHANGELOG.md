@@ -1,6 +1,111 @@
 # Changelog
 
-## 0.2.0 (unreleased)
+## 0.2.1 (2026-11-04)
+
+Two pinned dependencies move forward, one test is adapted to the new ML-KEM key layout, and one
+test is added. The crate's code and public API are unchanged; one doc comment in `src/sign.rs`
+now names falcon-rs 0.3.1.
+
+### Security
+
+- ml-kem 0.3.0-rc.0 to 0.3.3 (pinned `=0.3.3`). In 0.3.0-rc.0, CBD sampling, used in key
+  generation, encapsulation and decapsulation, read a small table at an index taken from secret
+  bits: a cache-timing side channel. ml-kem 0.3.3 computes each coefficient arithmetically
+  instead (RustCrypto/KEMs #386), and its maintainers list the change under Security. This crate
+  rebuilds the ML-KEM key from its seed on every `kem::decapsulate` call, so under 0.2.0 that
+  lookup ran on the long-term secret once per decapsulation. The pin also moves ML-KEM from a
+  release candidate to a release.
+- ml-kem 0.3.3 depends on module-lattice 0.2, which resolves to 0.2.4, in this repository's
+  `Cargo.lock` and in a fresh resolve. 0.2.4 computes its modular reduction with ctutils's
+  constant-time comparison and selection (RustCrypto/KEMs #409). module-lattice 0.1.0, which
+  0.2.0 used, wrote that reduction as a branch in the source.
+- ml-kem 0.3.4 (2026-10-31) is not taken. It requires Rust 1.87, so users on Rust 1.85 could not
+  take this release at all and would stay on 0.3.0-rc.0. Its fixes are in code this crate does
+  not call (printing a key with `Debug`, comparing keys, PKCS#8 encoding, importing an expanded
+  key), and its other change speeds up a step that works on public data.
+- falcon-rs 0.2.3 to 0.3.1 (pinned `=0.3.1`; 0.3.0 has the code changes, 0.3.1 changes only
+  documentation). Signing now checks each new signature against the public key before returning
+  it. A signature that fails the check is discarded: `sign::sign` and the other signing
+  functions return `PqcError::Sign` with the text `FaultDetected`, which should be treated as a
+  security event, not retried. falcon-rs 0.3.1 also wipes more of its signing buffers, but not
+  all of them: the raw signature vector is freed without being cleared, so after a detected
+  fault the discarded signature stays in freed memory. falcon-rs's opt-in integer emulation of
+  floating point (`fpemu`, which its author describes as constant time) is not enabled here, so
+  Falcon key generation and signing still use hardware floating point, and
+  `sign::FALCON_SIGNING_AVAILABLE` is unchanged.
+
+### Performance
+
+Measured through this crate's API on one Apple M1 Max (aarch64-apple-darwin), release builds,
+medians of runs alternating between 0.2.0 and 0.2.1. x86_64 was not measured.
+
+- ML-KEM takes about 30 to 50 percent longer. ML-KEM-768 on that machine: key generation 33 to
+  44 microseconds, encapsulation 31 to 45, decapsulation 67 to 92. The cost comes from
+  module-lattice 0.2.4's constant-time reduction: built with module-lattice 0.2.3 instead,
+  ML-KEM-768 decapsulation takes about 43 microseconds, less than under 0.2.0. This release
+  keeps 0.2.4, trading that speed for the hardened reduction.
+- Falcon-512 signing takes about 15 percent longer (314 to 363 microseconds), from falcon-rs's
+  signature check and wiping. falcon-rs's README puts these at about 10 percent for the check
+  and about 16 percent more for the wiping, against its 0.2.x baseline.
+
+### Dependency graph
+
+- New: module-lattice 0.2.4, sha3 0.12.0, shake 0.1.0 and sponge-cursor 0.1.0. ctutils moves
+  from 0.4.2 to 0.4.8, and subtle is no longer used. None of them compiles or binds C (checked by
+  `scripts/check-zero-c.sh` in the repository).
+
+### Minimum Rust version
+
+- With this repository's `Cargo.lock`: 1.87, up from 1.85 with 0.2.0's. ml-kem 0.3.3 needs
+  1.85, but module-lattice 0.2.4 and ctutils 0.4.8, to which cargo resolves its dependencies,
+  declare 1.87. In this repository, Rust 1.85 builds the library and its tests after
+  `cargo update -p module-lattice@0.2.4 --precise 0.2.3` and
+  `cargo update -p ctutils --precise 0.4.2`.
+- A crate that depends on paraxiom-pqc resolves its own versions, so these figures do not carry
+  over. A fresh resolve today also takes sha2 0.11.1 (through paraxiom-slh-dsa, with the
+  default `sign` feature), which declares 1.88. On Rust 1.85, either let cargo's MSRV-aware
+  resolver choose (set `package.rust-version = "1.85"` and `resolver = "3"`), or run the two
+  commands above and `cargo update -p sha2@0.11.1 --precise 0.11.0`.
+- module-lattice 0.2.3 writes the reduction with a bit mask rather than through ctutils (see
+  Security and Performance).
+
+### Tests
+
+- `tests/zeroize.rs`: since ml-kem 0.3.2 the ML-KEM decapsulation key keeps d, z, the secret
+  vector s_hat and the public encryption key in four separate heap allocations, not inside the
+  key struct, so the old check, which looked for the secrets inside the boxed key, failed before
+  the drop. The test now records the allocations the key makes, checks that d, z and s_hat each
+  sit in an allocation of their own, and checks that each of those is all zero when freed. Two
+  controls show that the check can fail: a copy of d in an allocation of the same kind, freed
+  without being cleared, must be reported as still holding d, and the allocation holding the
+  public encryption key, which ml-kem does not clear, must be reported as still holding rho.
+  With ml-kem's `zeroize` feature turned off, the test fails on the wipe check. It covers the
+  key's own allocations, checked when the key is dropped.
+- `tests/zeroize_freed_heap.rs` (new): while one call runs, it copies every buffer the call
+  frees, just before the buffer goes back to the allocator, then searches the copies for
+  secrets. This covers temporary copies, which `tests/zeroize.rs` does not see. ML-KEM key
+  generation, encapsulation and decapsulation (of a valid and of a modified ciphertext) are
+  searched for d, z, windows of s_hat, the message and the shared secret; Falcon key generation
+  and signing for windows of the encoded private key. None is found with ml-kem 0.3.3 and
+  falcon-rs 0.3.1. The test fails on two modified copies of ml-kem 0.3.3: one frees an unwiped
+  copy of the key while building it, the other while decapsulating. In a release build the
+  compiler removes the first copy, which nothing reads, so no secret reaches the heap and the
+  test rightly finds none; the second copy is used, and the test fails on it in both builds.
+
+### Packaging
+
+- `.github/`, which 0.2.0 shipped, is now left out of the published crate, and so is `scripts/`:
+  both hold files for the repository's own checks.
+
+### Other
+
+- `kani/Cargo.lock` follows the new versions. It had also still named the vendored ML-DSA and
+  SLH-DSA crates by their upstream names. It is not part of the published crate.
+- README.md, SECURITY.md and docs/SIDE-CHANNEL-AUDIT.md no longer call ml-kem a pre-release,
+  and the timing document says that its ML-KEM and Falcon rows were measured on the old
+  versions.
+
+## 0.2.0 (2026-10-15)
 
 0.2.0 rather than 0.1.5 because some changes break callers at compile time, on purpose, and
 some change what is accepted at run time.
