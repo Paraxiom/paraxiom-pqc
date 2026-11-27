@@ -694,7 +694,7 @@ dependencies = [
 
 [[package]]
 name = "paraxiom-pqc"
-version = "0.2.1"
+version = "0.3.0"
 dependencies = [
  "criterion 0.5.1",
  "falcon-rs",
